@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from typing import Any, TextIO
 
 from .models import InvoiceResult, RunResult, TraceEvent
 
 
 class EventCollector:
-    def __init__(self, run_id: str, secrets: list[str] | None = None):
+    def __init__(
+        self,
+        run_id: str,
+        secrets: list[str] | None = None,
+        on_event: Callable[[TraceEvent], None] | None = None,
+    ):
+        self.on_event = on_event
         self.run_id = run_id
         self.events: list[TraceEvent] = []
         self.source_id: str | None = None
@@ -33,7 +40,15 @@ class EventCollector:
             payload["elapsed_ms"] = round((time.monotonic() - self.start) * 1000, 3)
         if self.processing_index is not None:
             payload["payload"]["processing_index"] = self.processing_index
-        self.events.append(TraceEvent.model_validate(payload))
+        normalized = TraceEvent.model_validate(payload)
+        self.events.append(normalized)
+        if self.on_event is not None:
+            try:
+                self.on_event(normalized)
+            except OSError:
+                # Progress is best-effort; durable results/payment state remain authoritative.
+                self.on_event = None
+                self.record("observability", "progress_output_unavailable")
 
     def record(self, stage: str, event: str, **payload: Any) -> None:
         self.emit(

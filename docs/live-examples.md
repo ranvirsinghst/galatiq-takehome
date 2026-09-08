@@ -28,7 +28,7 @@ Local evidence: `runs/c1876e81b6274e93a4c64fa7378fa228/`.
 uv run python main.py --invoice_path=data/invoices --trace
 ```
 
-All supported files are ingested before any payment processing. Processing then follows invoice date with deterministic tie breaking. Results are streamed as each invoice completes; the final JSON line is the run summary.
+All supported files are ingested before any payment processing. Processing then follows invoice date with deterministic tie breaking. The default terminal shows live filename-prefixed progress and readable outcomes. Add `--json` for JSONL stdout; its final line is the run summary. Results and audit artifacts remain JSONL.
 
 Observed: 20 completed, 2 approved and paid, 18 rejected, zero operational errors. Payments: INV-1001 USD 5,000.00 and INV-1004 USD 1,890.00; total USD 6,890.00. Final inventory: WidgetA 2, WidgetB 3, GadgetX 5, FakeItem 0. The audit confirms all 20 ingestion terminal events precede processing; valid dates are sorted. SQLite payment count and stock match the summary.
 

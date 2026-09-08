@@ -55,9 +55,20 @@ Retries are bounded separately: three extraction attempts, three VP cycles, two 
 
 ## Results and observability
 
-Stdout contains JSONL: one `invoice` result per supported input and a final `summary`. Progress and diagnostics go to stderr. Business rejection exits 0; operational failure exits 1; invalid input/configuration exits 2.
+The default CLI prints live, filename-prefixed progress to stderr and readable decisions and a summary to stdout. Progress is flushed before reading a source or waiting for Grok, so extraction is visible immediately. All invoices are still ingested before processing in invoice-date order.
 
-`--trace` includes source-linked node events, tool calls/results, concise VP rationales, critiques, corrections, retries, and committed payment effects. It does not expose hidden chain-of-thought or credentials. Ordinary rejection reasons remain visible without trace.
+```text
+invoice_1001.txt: Extracting (1/20)
+invoice_1001.txt: Extracted
+...
+invoice_1001.txt: Checking inventory
+invoice_1001.txt: VP reviewing invoice
+invoice_1001.txt: PAID (mock) — $5,000.00 USD
+```
+
+Use `--json` for JSONL stdout (one invoice result plus a final summary); progress remains on stderr, so `--json > results.jsonl` is safe for scripts. Business rejection exits 0; operational failure exits 1; invalid input/configuration exits 2.
+
+`--trace` adds readable live diagnostics such as model response timing and tool/review details. It also includes source-linked structured events in JSON artifacts and in stdout when combined with `--json`. It does not expose hidden chain-of-thought or credentials. Ordinary rejection reasons remain visible without trace.
 
 Each invocation writes `runs/<run_id>/inventory.db`, `results.jsonl`, and `audit.jsonl`; use `--output_dir` to select a different root. Completed outcomes are flushed incrementally, so interruption preserves earlier results. The audit file retains source hashes, exact normalized candidates, source amounts/evidence, validation reports, and bound VP decisions. The run directory is printed before processing so a partial run can be reconciled against its ledger. These are ignored local artifacts, not shared state for future runs. A failed final inventory read is reported as unavailable, not fabricated as the seed balance.
 

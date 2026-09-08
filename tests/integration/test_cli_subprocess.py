@@ -87,6 +87,7 @@ def test_whole_cli_process_through_http_and_committed_ledger(tmp_path):
                 "--output_dir",
                 str(tmp_path / "runs"),
                 "--trace",
+                "--json",
             ],
             cwd=Path(__file__).resolve().parents[2],
             env=env,

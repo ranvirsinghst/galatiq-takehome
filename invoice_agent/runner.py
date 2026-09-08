@@ -86,6 +86,13 @@ def run(
             outcome = IngestionOutcome(source_id=source_id, error=fatal)
         else:
             try:
+                d.events.record(
+                    "ingestion",
+                    "ingest_started",
+                    filename=path.name,
+                    position=position + 1,
+                    total=len(paths),
+                )
                 source = read_source(path, source_id)
                 hashes[source_id] = source.content_sha256
                 outcome = ingest(source, d.llm, d.policy, d.events)

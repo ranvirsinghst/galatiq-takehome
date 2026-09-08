@@ -79,6 +79,7 @@ class XAIClient:
         response: httpx.Response | None = None
         for attempt in range(self.retries + 1):
             retry_after = 0.0
+            self._event(request.phase, "model_request", {"attempt": attempt + 1})
             try:
                 response = self.client.post("chat/completions", json=payload)
                 if response.status_code in (408, 429) or response.status_code >= 500:
