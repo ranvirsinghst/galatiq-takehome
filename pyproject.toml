@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "galatiq-invoice-agent"
+version = "0.1.0"
+description = "Local, auditable invoice processing with bounded agent review"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.10,<3", "langgraph>=0.2,<2", "httpx>=0.28,<1", "jsonschema>=4.23,<5", "python-dotenv>=1,<2", "pypdf>=5,<7", "defusedxml>=0.7,<1"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.9,<1", "mypy>=1.14,<2", "httpx>=0.28,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["invoice_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: opt-in xAI integration tests requiring credentials"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+warn_unused_ignores = true
+ignore_missing_imports = true
