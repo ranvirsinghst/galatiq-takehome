@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/bmad-code-org/BMAD-METHOD",
+  "commit": "b0d29434d06b7c99df7bcc6b47de6216f2472449",
+  "upstream_ref_at_fetch": "dev",
+  "installed_plugin_version": "6.13.0-next",
+  "matching_tag_available": false,
+  "upstream_script_directory": "skills/bmad/scripts",
+  "license": "MIT",
+  "files_sha256": {
+    "scripts/config_utils.py": "a4bba671cb3aedbf80fa4309d9c96afe6674f8de656a44a7fe67324815de437d",
+    "scripts/memlog.py": "463b45ae60c563514cdcbc007a24a492751b7e023b181b02b1b824331b620379",
+    "scripts/render_skill.py": "c00b81838c6296afb408306eab7519a80be43c573434f6e441f7124e5a6c24f4",
+    "scripts/resolve_config.py": "6e2eaf15d40f89f8be78a835c38b6bde1d41f8f820a12c8d7dc8d51a707f0499",
+    "scripts/resolve_customization.py": "3292a5f7d89c3c1dbaa21631f6fba7fd64a0916f6e1cabcc0d5a12280cc4932e",
+    "scripts/setup.py": "18317cd223ae0753590ca09d5d69e0573123abf75ce818c9aa7ad6353c2fa217",
+    "scripts/tests/test_config_utils.py": "667d0ebf860e46c83475510c10f0df7caf67463c08ab632dcf2e29f312833a51",
+    "scripts/tests/test_memlog.py": "498bc8c3948a759df5377fd01dcd7246c0b412849c4ff5d3e78cdef4eed2edcd",
+    "scripts/tests/test_render_skill.py": "9920a25e38644d0601a5379b3cbbd67e79441361189136786e707a9a7cbd9dae",
+    "scripts/tests/test_resolve_config.py": "8c5441f43111698a4bf5b3b49be3a0890e8776f61fefb3c9fe7e726f891b7dee",
+    "scripts/tests/test_resolve_customization.py": "f753722d2e5cdb59342fb219a6cc25f79426e315d509e2a59ccffce4f166d9b1",
+    "LICENSE": "0aa79baf6328b4a1e694ce10a12ffc36d7666554da128dff0e8fcda0fc536a66",
+    "assets/config.template.toml": "8e6d43cafaa5235397b87ab6cf132a092faa882ff3f929b55584e7c0060f9bea"
+  },
+  "setup_flow": "skills/bmad/references/setup.md",
+  "setup_note": "Restored full official shared-script tree with pinned skills/bmad/scripts/setup.py; question discovery returned []; existing answers preserved and upstream defaults filled."
+}

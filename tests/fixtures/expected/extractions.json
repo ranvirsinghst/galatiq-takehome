@@ -1,0 +1,538 @@
+{
+  "invoice_1001.txt": {
+    "invoice_number": "INV-1001",
+    "vendor": "Widgets Inc.",
+    "date": "2026-01-15",
+    "due_date": "2026-02-01",
+    "total": "5,000.00",
+    "line_items": [
+      {
+        "item": "WidgetA",
+        "quantity": 10,
+        "unit_price": "250.00",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e6"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 5,
+        "unit_price": "500.00",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e7"
+        ]
+      }
+    ],
+    "subtotal": "5,000.00",
+    "tax_amount": "0.00",
+    "payment_terms": "Net 15",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e2"
+      ],
+      "vendor": [
+        "{source_id}:e1"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e8",
+        "{source_id}:e10"
+      ]
+    }
+  },
+  "invoice_1002.txt": {
+    "invoice_number": "1002",
+    "vendor": "Gadgets Co.",
+    "date": "Jan 30 2026",
+    "due_date": "2026-01-30",
+    "total": "15,000.00",
+    "line_items": [
+      {
+        "item": "GadgetX",
+        "quantity": 20,
+        "unit_price": "750",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e6"
+        ]
+      }
+    ],
+    "payment_terms": "Net 30",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e2"
+      ],
+      "vendor": [
+        "{source_id}:e1"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e7"
+      ]
+    }
+  },
+  "invoice_1003.txt": {
+    "invoice_number": "INV-1003",
+    "vendor": "Fraudster LLC",
+    "date": "2026-01-20",
+    "due_date": "yesterday",
+    "total": "100,000.00",
+    "line_items": [
+      {
+        "item": "FakeItem",
+        "quantity": 100,
+        "unit_price": "1,000.00",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e6"
+        ]
+      }
+    ],
+    "payment_terms": "Immediate",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e2"
+      ],
+      "vendor": [
+        "{source_id}:e1"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e7"
+      ]
+    }
+  },
+  "invoice_1008.txt": {
+    "invoice_number": "INV-1008",
+    "vendor": "NoProd Industries",
+    "date": "2026-01-10",
+    "due_date": "2026-01-20",
+    "total": "9,900.00",
+    "line_items": [
+      {
+        "item": "SuperGizmo",
+        "quantity": 12,
+        "unit_price": "400.00",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e10"
+        ]
+      },
+      {
+        "item": "MegaSprocket",
+        "quantity": 6,
+        "unit_price": "850.00",
+        "amount": null,
+        "evidence_refs": [
+          "{source_id}:e11"
+        ]
+      }
+    ],
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e6"
+      ],
+      "vendor": [
+        "{source_id}:e5",
+        "{source_id}:e16"
+      ],
+      "date": [
+        "{source_id}:e7"
+      ],
+      "due_date": [
+        "{source_id}:e8"
+      ],
+      "total": [
+        "{source_id}:e12"
+      ]
+    }
+  },
+  "invoice_1010.txt": {
+    "invoice_number": "INV-1010",
+    "vendor": "Consolidated Materials Group",
+    "date": "January 27, 2026",
+    "due_date": "February 26, 2026",
+    "total": "7,185.00",
+    "line_items": [
+      {
+        "item": "WidgetA",
+        "quantity": 8,
+        "unit_price": "250.00",
+        "amount": "2,000.00",
+        "evidence_refs": [
+          "{source_id}:e7"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 4,
+        "unit_price": "500.00",
+        "amount": "2,000.00",
+        "evidence_refs": [
+          "{source_id}:e8"
+        ]
+      },
+      {
+        "item": "GadgetX",
+        "quantity": 2,
+        "unit_price": "750.00",
+        "amount": "1,500.00",
+        "evidence_refs": [
+          "{source_id}:e9"
+        ]
+      },
+      {
+        "item": "WidgetA (rush order)",
+        "quantity": 4,
+        "unit_price": "300.00",
+        "amount": "1,200.00",
+        "evidence_refs": [
+          "{source_id}:e10"
+        ]
+      }
+    ],
+    "subtotal": "6,700.00",
+    "tax_amount": "335.00",
+    "shipping": "150.00",
+    "payment_terms": "Net 30",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e0"
+      ],
+      "vendor": [
+        "{source_id}:e2"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e15"
+      ]
+    }
+  },
+  "invoice_1011.txt": {
+    "invoice_number": "INV-1011",
+    "vendor": "Summit Manufacturing Co.",
+    "date": "2026-01-20",
+    "due_date": "2026-02-20",
+    "total": "3,000.00",
+    "line_items": [
+      {
+        "item": "WidgetA",
+        "quantity": 6,
+        "unit_price": "250.00",
+        "amount": "1,500.00",
+        "evidence_refs": [
+          "{source_id}:e7"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 3,
+        "unit_price": "500.00",
+        "amount": "1,500.00",
+        "evidence_refs": [
+          "{source_id}:e8"
+        ]
+      }
+    ],
+    "subtotal": "3,000.00",
+    "tax_amount": "0.00",
+    "payment_terms": "Net 30",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e1"
+      ],
+      "vendor": [
+        "{source_id}:e2"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e10",
+        "{source_id}:e12"
+      ]
+    }
+  },
+  "invoice_1011.pdf": {
+    "invoice_number": "INV-1011",
+    "vendor": "Summit Manufacturing Co.",
+    "date": "2026-01-20",
+    "due_date": "2026-02-20",
+    "total": "3,000.00",
+    "line_items": [
+      {
+        "item": "WidgetA",
+        "quantity": 6,
+        "unit_price": "250.00",
+        "amount": "1,500.00",
+        "evidence_refs": [
+          "{source_id}:e6"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 3,
+        "unit_price": "500.00",
+        "amount": "1,500.00",
+        "evidence_refs": [
+          "{source_id}:e7"
+        ]
+      }
+    ],
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e1"
+      ],
+      "vendor": [
+        "{source_id}:e2"
+      ],
+      "date": [
+        "{source_id}:e3"
+      ],
+      "due_date": [
+        "{source_id}:e4"
+      ],
+      "total": [
+        "{source_id}:e8"
+      ]
+    }
+  },
+  "invoice_1012.txt": {
+    "invoice_number": "INV 1012",
+    "vendor": "QuickShip Distributers",
+    "date": "26-Jan-2O26",
+    "due_date": "25-Feb-2026",
+    "total": "9,975.00",
+    "line_items": [
+      {
+        "item": "Widget A",
+        "quantity": 12,
+        "unit_price": "250",
+        "amount": "3,000.00",
+        "evidence_refs": [
+          "{source_id}:e11"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 7,
+        "unit_price": "500",
+        "amount": "3,500.O0",
+        "evidence_refs": [
+          "{source_id}:e12"
+        ]
+      },
+      {
+        "item": "Gadget X",
+        "quantity": 4,
+        "unit_price": "750",
+        "amount": "3,000.00",
+        "evidence_refs": [
+          "{source_id}:e13"
+        ]
+      }
+    ],
+    "subtotal": "9,500.00",
+    "tax_amount": "475.00",
+    "payment_terms": "Net 30",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e3"
+      ],
+      "vendor": [
+        "{source_id}:e1"
+      ],
+      "date": [
+        "{source_id}:e4"
+      ],
+      "due_date": [
+        "{source_id}:e5"
+      ],
+      "total": [
+        "{source_id}:e17"
+      ]
+    }
+  },
+  "invoice_1012.pdf": {
+    "invoice_number": "INV 1012",
+    "vendor": "QuickShip Distributers",
+    "date": "26-Jan-2O26",
+    "due_date": "25-Feb-2026",
+    "total": "9,975.00",
+    "line_items": [
+      {
+        "item": "Widget A",
+        "quantity": 12,
+        "unit_price": "250",
+        "amount": "3,000.00",
+        "evidence_refs": [
+          "{source_id}:e11"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 7,
+        "unit_price": "500",
+        "amount": "3,500.O0",
+        "evidence_refs": [
+          "{source_id}:e12"
+        ]
+      },
+      {
+        "item": "Gadget X",
+        "quantity": 4,
+        "unit_price": "750",
+        "amount": "3,000.00",
+        "evidence_refs": [
+          "{source_id}:e13"
+        ]
+      }
+    ],
+    "subtotal": "9,500.00",
+    "tax_amount": "475.00",
+    "payment_terms": "Net 30",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e3"
+      ],
+      "vendor": [
+        "{source_id}:e1"
+      ],
+      "date": [
+        "{source_id}:e4"
+      ],
+      "due_date": [
+        "{source_id}:e5"
+      ],
+      "total": [
+        "{source_id}:e17"
+      ]
+    }
+  },
+  "invoice_1013.pdf": {
+    "invoice_number": "INV-1013",
+    "vendor": "Atlas Industrial Supply",
+    "date": "2026-01-24",
+    "due_date": "2026-03-24",
+    "total": "22,562.80",
+    "line_items": [
+      {
+        "item": "WidgetA",
+        "quantity": 15,
+        "unit_price": "250.00",
+        "amount": "3,750.00",
+        "evidence_refs": [
+          "{source_id}:e5"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 10,
+        "unit_price": "500.00",
+        "amount": "5,000.00",
+        "evidence_refs": [
+          "{source_id}:e6"
+        ]
+      },
+      {
+        "item": "GadgetX",
+        "quantity": 5,
+        "unit_price": "750.00",
+        "amount": "3,750.00",
+        "evidence_refs": [
+          "{source_id}:e7"
+        ]
+      },
+      {
+        "item": "WidgetA",
+        "quantity": 5,
+        "unit_price": "240.00",
+        "amount": "1,200.00",
+        "evidence_refs": [
+          "{source_id}:e8"
+        ]
+      },
+      {
+        "item": "WidgetB",
+        "quantity": 8,
+        "unit_price": "480.00",
+        "amount": "3,840.00",
+        "evidence_refs": [
+          "{source_id}:e9"
+        ]
+      },
+      {
+        "item": "GadgetX",
+        "quantity": 3,
+        "unit_price": "750.00",
+        "amount": "2,250.00",
+        "evidence_refs": [
+          "{source_id}:e10"
+        ]
+      },
+      {
+        "item": "WidgetA",
+        "quantity": 2,
+        "unit_price": "250.00",
+        "amount": "500.00",
+        "evidence_refs": [
+          "{source_id}:e11"
+        ]
+      },
+      {
+        "item": "GadgetX",
+        "quantity": 1,
+        "unit_price": "750.00",
+        "amount": "750.00",
+        "evidence_refs": [
+          "{source_id}:e12"
+        ]
+      }
+    ],
+    "subtotal": "21,040.00",
+    "tax_amount": "1,472.80",
+    "payment_terms": "Net 60",
+    "field_evidence": {
+      "invoice_number": [
+        "{source_id}:e1"
+      ],
+      "vendor": [
+        "{source_id}:e2"
+      ],
+      "date": [
+        "{source_id}:e1"
+      ],
+      "due_date": [
+        "{source_id}:e2"
+      ],
+      "total": [
+        "{source_id}:e15"
+      ]
+    }
+  }
+}
