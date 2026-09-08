@@ -30,7 +30,7 @@ def test_interruption_preserves_committed_outcome_and_audit(tmp_path, monkeypatc
     monkeypatch.setenv("XAI_API_KEY", "test-only-placeholder")
     monkeypatch.setattr(main, "XAIClient", InterruptSecond)
     output = tmp_path / "runs"
-    assert main.main(["--invoice_path", str(folder), "--output_dir", str(output)]) == 130
+    assert main.main(["--invoice_path", str(folder), "--output_dir", str(output), "--json"]) == 130
     captured = capsys.readouterr()
     run_dir = next(output.iterdir())
     assert str(run_dir) in captured.err

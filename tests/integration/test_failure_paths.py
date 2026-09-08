@@ -128,7 +128,7 @@ def test_cli_directory_permission_failure_is_structured(monkeypatch, capsys):
         raise PermissionError("sensitive filesystem details")
 
     monkeypatch.setattr(main, "discover", denied)
-    assert main.main(["--invoice_path", "anything"]) != 0
+    assert main.main(["--invoice_path", "anything", "--json"]) != 0
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "sensitive filesystem details" not in captured.err

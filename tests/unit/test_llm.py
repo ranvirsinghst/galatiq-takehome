@@ -186,6 +186,7 @@ def test_observable_retry_and_elapsed_duration():
             events.append(event)
 
     def handler(req):
+        assert events[-1].event == "model_request"
         calls.append(req)
         if len(calls) == 1:
             return httpx.Response(429, headers={"retry-after": "invalid"})
@@ -201,7 +202,12 @@ def test_observable_retry_and_elapsed_duration():
         random_value=lambda: 0,
     )
     client.complete(request())
-    assert [event.event for event in events] == ["transport_retry", "model_response"]
+    assert [event.event for event in events] == [
+        "model_request",
+        "transport_retry",
+        "model_request",
+        "model_response",
+    ]
     assert events[-1].payload["elapsed_ms"] == 500
     client.close()
 
