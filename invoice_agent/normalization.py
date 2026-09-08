@@ -42,6 +42,23 @@ def normalize_date(value: Any) -> date | None:
     return None
 
 
+def normalize_tax_rate(value: Any) -> Decimal | None:
+    """Interpret an explicit percent suffix; unsuffixed rates remain fractions."""
+    if isinstance(value, str) and "%" in value:
+        token = value.strip()
+        if not re.fullmatch(r"[+-]?[0-9O]+(?:\.[0-9O]+)?\s*%", token):
+            return None
+        parsed = normalize_decimal(token[:-1].strip())
+        if parsed is None:
+            return None
+        try:
+            round_cents(parsed)
+        except ValueError:
+            return None
+        return parsed / Decimal(100)
+    return normalize_decimal(value)
+
+
 def normalize_invoice_number(value: Any) -> str | None:
     if value is None or not str(value).strip():
         return None
@@ -103,7 +120,7 @@ def candidate_from_mapping(data, source, policy):
         )
 
     def amount(value, field):
-        parsed = normalize_decimal(value)
+        parsed = normalize_tax_rate(value) if field == "tax_rate" else normalize_decimal(value)
         if parsed is not None:
             try:
                 round_cents(parsed)
@@ -121,7 +138,12 @@ def candidate_from_mapping(data, source, policy):
                     )
                 )
                 parsed = None
-        return normalized(field, value, parsed, "decimal token cleanup")
+        method = (
+            "explicit percentage to decimal rate"
+            if field == "tax_rate" and isinstance(value, str) and "%" in value
+            else "decimal token cleanup"
+        )
+        return normalized(field, value, parsed, method)
 
     def usd(value):
         return convert_to_usd(value, rate) if value is not None and rate is not None else None

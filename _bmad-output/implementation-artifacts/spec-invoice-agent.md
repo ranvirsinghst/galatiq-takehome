@@ -2,7 +2,7 @@
 title: Complete local multi-agent invoice processor
 type: feature
 created: 2026-09-08
-status: in-review
+status: done
 route: dispatch
 baseline_commit: 2f150152b962ccd24b35e515e56b04f673d410bc
 review_loop_iteration: 0
@@ -68,7 +68,7 @@ context:
 
 ## Implementation Notes
 
-- Implementation and offline gates complete. Live acceptance remains credential-blocked; status intentionally remains in-review instead of claiming full completion.
+- Implementation and offline gates complete. Credentials configured; live single-file and full-folder CLI paths plus both live acceptance tests pass. Full live evaluation passes all 23 cases.
 - Final verification: 237-test complete offline run plus passing full CLI/HTTP subprocess regression, 23/23 evaluator, 94% branch-inclusive coverage, lint/types and wheel build pass.
 
 - User authorization covers the entire plan, parallel dispatch, existing session-generated dirty docs, review and appropriate commit. Existing unrelated .DS_Store will be ignored/preserved. No new approval checkpoint needed.
@@ -96,7 +96,7 @@ context:
 | Edge: oversized finite money | medium | Decimal quantization exception became internal error; bounded supported monetary parsing preserves invalid token/finding. Fixed with regression. |
 | Verification: summary-only failure CLI exit | medium | Removing summary.error exit condition was untested; actual CLI regression now verifies retained paid result and exit 1. Test added. |
 
-Prior review also resolved final snapshot error preservation, discovery permission errors, real-adapter tool recovery, and duplicate commit events. See docs/build/review-runtime.md and review-integration.md. All fixes preserve original intent and require no new user decision. Live provider acceptance remains blocked solely on credentials.
+Prior review also resolved final snapshot error preservation, discovery permission errors, real-adapter tool recovery, and duplicate commit events. See docs/build/review-runtime.md and review-integration.md. All fixes preserve original intent and require no new user decision. Live provider acceptance is complete with configured credentials.
 
 ## Verification
 
@@ -106,3 +106,12 @@ Prior review also resolved final snapshot error preservation, discovery permissi
 - `uv run mypy invoice_agent` — typed module boundaries checked.
 - `uv run python scripts/evaluate.py` — independent expected findings match.
 - Real CLI single and folder invocations using local xAI key — actual tool/review/payment path verified; report credential blocker honestly if absent.
+
+
+## Live follow-up review
+
+- Live extraction preserved raw `0%`, revealing that normalization treated a valid percentage as an invalid amount. Added tax-rate-specific Decimal percentage parsing with raw token/evidence preservation and 20 parameterized regression cases. Independent review found no production regression; corrected its tax arithmetic assertion to check the actual `TOTAL_MISMATCH` code.
+- High-value rejection checks were required by the deterministic policy but described as approval-only in the prompt. Aligned the VP prompt with the policy and added a regression demonstrating revision despite an accepting critique when required checks are absent.
+- Final offline verification: 259 tests; Ruff lint/format and mypy pass. Both real xAI live tests pass. The real full-folder CLI completed 20 invoices with 2 mock payments totaling USD 6,890.00, 18 rejections, and zero operational errors; SQLite and trace invariants checked directly.
+
+- Full real xAI evaluator: **23/23 cases passed**. All acceptance work complete; local follow-up commit records live fixes and evidence.
