@@ -145,6 +145,38 @@ def test_high_value_can_approve_with_complete_checklist():
     assert result.accepted
 
 
+def test_high_value_rejection_requires_checklist_and_prompt_explains_it():
+    c, r = setup(
+        "12000.00",
+        findings=[
+            ValidationFinding(code="INSUFFICIENT_STOCK", severity="blocker", message="Too many")
+        ],
+    )
+    incomplete = proposal("rejected", finding_codes=["INSUFFICIENT_STOCK"])
+    complete = {
+        **incomplete,
+        "high_value_review": True,
+        "checks": {
+            "arithmetic": "No arithmetic findings in report.",
+            "aggregate_stock": "Report records insufficient stock; reject payment.",
+            "data_completeness": "Validation is complete.",
+            "suspicious_signals": "No additional suspicious findings recorded.",
+        },
+    }
+
+    class PromptAwareScript(Script):
+        def complete(self, request):
+            assert "whether approved or rejected" in request.messages[0]["content"]
+            return super().complete(request)
+
+    llm = PromptAwareScript([incomplete, ACCEPT, complete, ACCEPT])
+    outcome = review(c, r, llm, Policy(), Events())
+    assert outcome.accepted
+    assert outcome.proposal.decision == "rejected"
+    assert outcome.revision_count == 1
+    assert outcome.semantic_calls == 4
+
+
 def test_warnings_require_acknowledgment():
     c, r = setup(
         findings=[

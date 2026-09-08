@@ -89,3 +89,5 @@ A skipped live check is not proof of provider compatibility. See [build status a
 This prototype does not verify legal vendor identity, prove fraud, read image-only scans, make real payments, or guarantee arbitrary free-text extraction accuracy. Evidence checks catch concrete errors and retries remain bounded. Late extraction inconsistencies reject rather than reorder invoices after payments have begun.
 
 The clean examples in the assignment pass fresh-stock validation in isolation; a folder may reject them after earlier invoices consume inventory. No cloud deployment, production banking integration, or cross-run payment protection is claimed.
+
+Verified live commands and observed results: [Live examples](docs/live-examples.md).
