@@ -2,6 +2,10 @@
 
 Process invoices with Python, LangGraph, xAI Grok, and SQLite. The agent extracts invoice details, checks inventory, totals and catalog prices, simulates VP approval, and records mock payments with an audit trail. **No real payments are made.**
 
+## Business value
+
+Automated checks target processing errors; batch processing reduces manual handoffs; readable decisions help reviewers resolve exceptions. Savings and turnaround improvements are not measured by this prototype.
+
 ## Quick start
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
@@ -18,34 +22,48 @@ uv run python main.py --invoice_path=data/invoices/invoice_1001.txt
 uv run python main.py --invoice_path=data/invoices --open-report
 ```
 
-Keep `.env` local. The default model is `grok-4.6`; set `XAI_MODEL` to change it.
+Keep `.env` local. The default model is `grok-4.3`, as configured in [.env_example](.env_example); set `XAI_MODEL` to change it.
+
+## Runtime
+
+Grok calls require internet access. Inventory, reports, and mock payments run locally; SQLite is created and seeded automatically. Offline tests use simulated model responses.
 
 ## How it works
 
-- Reads TXT, JSON, CSV, XML, and text-based PDF invoices. Scanned PDFs require OCR, which is outside this prototype's scope.
-- Ingests the entire folder first, then reviews invoices oldest first. Successful payments decrement stock. **Every invocation starts with fresh inventory and a fresh payment ledger.** Duplicate-payment protection applies within a run only.
-- Rejects invalid quantities, unknown items, insufficient stock, and inconsistent totals with reasons. Eligible invoices proceed to VP approval, critique, and bounded revision; deterministic checks guard payment.
-- Stores amounts in USD using fixed mock exchange rates.
-- Looks up reference prices through a typed catalog tool. Unit prices more than 10% above the reference block payment; prices more than 10% below it require VP warning acknowledgment. Exactly ±10% passes.
+- Extracts vendor, amounts, items, quantities, and dates from TXT, JSON, CSV, XML, and text-based PDFs. Uses conservative item aliases and bounded extraction repairs; missing or invalid required data blocks payment. Scanned PDFs need OCR, outside scope.
+- Ingests the folder first, then processes oldest first against shared stock. **Every invocation starts with fresh inventory and an empty ledger; duplicate protection applies within that run only.**
+- Rejects invalid quantities, unknown items, insufficient stock, and inconsistent totals. Amounts use fixed mock USD exchange rates.
+- Catalog prices above +10% block payment; below −10% require VP acknowledgment; exactly ±10% passes. Corpus-derived reference prices cannot establish contract prices or detect consistent inflation.
+- Eligible invoices receive VP approval, critique, and bounded revision. Above $10,000, review must assess arithmetic, aggregate stock, data completeness, and suspicious signals. Deterministic checks guard payment.
 
-The catalog is derived from the supplied invoice corpus, with a 10% demo tolerance band. Overcharges within that band, or prices inflated consistently across the corpus, remain undetected. This does not verify vendor contracts.
+Results, audit/trace logs, metrics, SQLite, and an HTML report are saved under `runs/<run_id>/`. The report shows VP explanations, revisions, timelines, estimated API spend, and blocked payment exposure—not realized savings. Use `--open-report` to view it, `--json` for structured stdout, `--trace` to embed events in results, or `--output_dir` to change the artifact root.
 
-The terminal shows progress, outcomes, rejection reasons, and a final summary. Each run saves an HTML report, invoice results, audit and trace logs, metrics, and its SQLite database under `runs/<run_id>/`.
+## Try these scenarios
 
-Each invoice has an expanded **VP review** section with the initial recommendation, the critique's explanation, any revisions, and the final review outcome. Explanations come directly from the VP responses; deterministic safeguards and inventory facts are labeled separately. Older runs explicitly identify explanations that were not recorded.
+Run each separately with `uv run python main.py --invoice_path=data/invoices/<file> --open-report`:
 
-The report includes invoice timelines, estimated API spend, token usage, latency, and blocked payment exposure—not realized savings. Use `--json` for machine-readable stdout, `--trace` to also embed detailed events in invoice results, or `--output_dir` to change the artifact root. Detailed trace logs are always saved per run.
+| File | Expected outcome |
+| --- | --- |
+| `invoice_1001.txt` | Approve and mock-pay $5,000 |
+| `invoice_1002.txt` | Reject: insufficient GadgetX stock and payment-term/date mismatch |
+| `invoice_1008.txt` | Reject: unknown items |
+| `invoice_1010.txt` | Reject: WidgetA priced 20% above catalog |
+
+Folder results differ because successful payments consume shared stock.
 
 ## Test
 
 ```bash
-# Offline tests and fixture evaluation; no API key needed
+# Offline; no API key needed
 uv run pytest tests/unit tests/integration -q
 uv run python scripts/evaluate.py
 
-# Live API tests; requires your xAI key
+# Live; requires your xAI key
 RUN_LIVE_XAI=1 uv run pytest tests/live -q
+uv run python scripts/evaluate.py --live
 ```
+
+Verified fixture evaluation: **23/23 cases passed offline and live**, covering individual invoices, shared inventory, duplicates, and revisions. Live outcomes depend on provider responses.
 
 ## Key Decisions
 
@@ -57,9 +75,9 @@ RUN_LIVE_XAI=1 uv run pytest tests/live -q
 
 ### Agent organization
 
-- **Decision:** Only two agents: ingestion, inventory validation, and VP approval. Validation and VP approval are folded into one review node. The VP critiques its own proposal in a separate call.
-- **Rationale:** Extraction and payment should live in separate nodes. Violations of deterministic rules should be instantly rejected to not waste time on VP review. Validation and approval as one node avoids playing a game of context telephone. A single context window holds all necessary information and perspective to handle approval/rejection.
-- **Tradeoffs:** One node still makes several model calls. The critique phase adds latency, and the same model might repeat mistakes.
+- **Decision:** Ingest invoices first, then use separate graph nodes for identity checks, tool-backed validation, VP review, and payment. The VP critiques its own proposal in a separate call.
+- **Rationale:** Pass structured invoice and validation data between stages. Deterministic blockers stop processing before VP review, and payment independently checks the approval evidence.
+- **Tradeoffs:** Processing can require several model calls. The critique phase adds latency, and the same model might repeat mistakes.
 
 ### Deterministic payment checks
 
@@ -87,7 +105,7 @@ RUN_LIVE_XAI=1 uv run pytest tests/live -q
 
 ## Further reading
 
-- [Original assignment](docs/assignment.md)
-- [Architecture and module specs](docs/specs/spec-invoice-agent/SPEC.md)
-- [Existing decision log](docs/decisions/README.md)
-- [Live examples](docs/live-examples.md) · [Metric definitions](docs/metrics.md) · [Build and verification evidence](docs/build/status.md)
+- [Processing workflow](invoice_agent/graph.py) and [VP review](invoice_agent/approval.py)
+- [Validation rules](invoice_agent/validation.py) and [payment persistence](invoice_agent/database.py)
+- [Metric calculations](invoice_agent/metrics.py)
+- [Fixture evaluator](scripts/evaluate.py) and [automated checks](.github/workflows/ci.yml)
