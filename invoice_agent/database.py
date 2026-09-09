@@ -9,6 +9,7 @@ from .config import Policy
 from .errors import AgentError
 from .identity import payment_fingerprint, payment_identity
 from .models import (
+    CatalogEvidence,
     ErrorCode,
     ErrorInfo,
     FindingOrigin,
@@ -69,6 +70,27 @@ class SQLitePaymentStore:
                 ErrorCode.STORAGE_ERROR, "Inventory lookup failed", fatal=True
             ) from error
 
+    def lookup_price(self, items: list[str]) -> CatalogEvidence:
+        try:
+            prices = {}
+            for item in sorted(set(items)):
+                row = self.connection.execute(
+                    "SELECT unit_price_usd FROM prices WHERE item=?", (item,)
+                ).fetchone()
+                prices[item] = row[0] if row else None
+            return CatalogEvidence(run_id=self.run_id, prices=prices)
+        except (sqlite3.Error, ValueError) as error:
+            raise AgentError(
+                ErrorCode.STORAGE_ERROR,
+                "Catalog lookup failed: invalid or unavailable catalog data",
+            ) from error
+
+    def _verified_catalog(self, request):
+        actual = self.lookup_price(list(request.report.catalog_evidence.prices))
+        if actual != request.report.catalog_evidence:
+            raise ValueError("Catalog evidence differs from current run catalog")
+        return actual
+
     def snapshot(self) -> InventorySnapshot:
         try:
             return InventorySnapshot(
@@ -126,7 +148,12 @@ class SQLitePaymentStore:
                 or request.fingerprint != payment_fingerprint(request.candidate)
             ):
                 raise ValueError("Payment identity binding mismatch")
-            original = validate(request.candidate, request.report.stock_snapshot, self.policy)
+            original = validate(
+                request.candidate,
+                request.report.stock_snapshot,
+                self.policy,
+                self._verified_catalog(request),
+            )
             if (
                 original.blockers
                 or original != request.report
@@ -167,8 +194,21 @@ class SQLitePaymentStore:
                     ]
                 )
             current = self.lookup(list(request.aggregate_quantities))
-            fresh = validate(request.candidate, current, self.policy)
-            if fresh.blockers:
+            try:
+                catalog = self._verified_catalog(request)
+            except ValueError as error:
+                self._rollback()
+                return PaymentOutcome(
+                    findings=[
+                        ValidationFinding(
+                            code="INVALID_PAYMENT_REQUEST",
+                            severity=Severity.BLOCKER,
+                            message=str(error),
+                        )
+                    ]
+                )
+            fresh = validate(request.candidate, current, self.policy, catalog)
+            if fresh.blockers or not fresh.complete:
                 self._rollback()
                 return PaymentOutcome(findings=fresh.blockers)
             if current.generation != request.report.inventory_generation:

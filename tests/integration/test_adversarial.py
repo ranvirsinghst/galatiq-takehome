@@ -49,11 +49,16 @@ def test_model_semantic_failure_still_cannot_authorize_payment(tmp_path):
         source_amounts={"total": Decimal(10)},
         items=[
             InvoiceLine(
-                line_id="1", item_name_normalized="WidgetA", quantity_raw="1", quantity=Decimal(1)
+                line_id="1",
+                item_name_normalized="WidgetA",
+                quantity_raw="1",
+                quantity=Decimal(1),
+                source_unit_price=Decimal(10),
+                unit_price_usd=Decimal(10),
             )
         ],
     )
-    report = validate(c, store.lookup(["WidgetA"]), Policy())
+    report = validate(c, store.lookup(["WidgetA"]), Policy(), store.lookup_price(["WidgetA"]))
 
     class HostileVP:
         def complete(self, request):
@@ -98,11 +103,16 @@ def test_nested_candidate_mutation_invalidates_accepted_review(tmp_path):
         source_amounts={"total": Decimal(10)},
         items=[
             InvoiceLine(
-                line_id="1", item_name_normalized="WidgetA", quantity_raw="1", quantity=Decimal(1)
+                line_id="1",
+                item_name_normalized="WidgetA",
+                quantity_raw="1",
+                quantity=Decimal(1),
+                source_unit_price=Decimal(10),
+                unit_price_usd=Decimal(10),
             )
         ],
     )
-    report = validate(c, store.lookup(["WidgetA"]), Policy())
+    report = validate(c, store.lookup(["WidgetA"]), Policy(), store.lookup_price(["WidgetA"]))
     outcome = ReviewOutcome(
         candidate_digest=candidate_digest(c),
         accepted=True,
@@ -139,11 +149,16 @@ def test_synthetic_report_cannot_hide_policy_warnings(tmp_path):
         source_amounts={"total": Decimal(10)},
         items=[
             InvoiceLine(
-                line_id="1", item_name_normalized="WidgetA", quantity_raw="1", quantity=Decimal(1)
+                line_id="1",
+                item_name_normalized="WidgetA",
+                quantity_raw="1",
+                quantity=Decimal(1),
+                source_unit_price=Decimal(10),
+                unit_price_usd=Decimal(10),
             )
         ],
     )
-    actual = validate(c, store.lookup(["WidgetA"]), Policy())
+    actual = validate(c, store.lookup(["WidgetA"]), Policy(), store.lookup_price(["WidgetA"]))
     assert any(f.code == "TERMS_DATE_MISMATCH" for f in actual.findings)
     forged = actual.model_copy(update={"findings": []})
     outcome = ReviewOutcome(

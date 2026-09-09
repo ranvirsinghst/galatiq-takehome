@@ -15,6 +15,7 @@ def candidate(quantity=2, **changes):
         quantity_raw=quantity,
         quantity=None if isinstance(quantity, bool) or quantity is None else Decimal(str(quantity)),
         source_unit_price=Decimal("10"),
+        unit_price_usd=Decimal("10"),
         source_line_total=Decimal("20"),
     )
     data = dict(

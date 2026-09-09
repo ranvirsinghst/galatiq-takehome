@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from invoice_agent.models import (
+    CatalogEvidence,
     InventorySnapshot,
     InvoiceIdentity,
     LLMRequest,
@@ -28,7 +29,11 @@ class MockPayment(Protocol):
     def __call__(self, vendor: str, amount_usd: Decimal) -> MockPaymentResult: ...
 
 
-class PaymentStore(InventoryReader, Protocol):
+class CatalogReader(Protocol):
+    def lookup_price(self, items: list[str]) -> CatalogEvidence: ...
+
+
+class PaymentStore(InventoryReader, CatalogReader, Protocol):
     def find_paid(self, identity: InvoiceIdentity) -> PaidRecord | None: ...
     def pay(self, request: PaymentRequest, mock: MockPayment) -> PaymentOutcome: ...
     def snapshot(self) -> InventorySnapshot: ...

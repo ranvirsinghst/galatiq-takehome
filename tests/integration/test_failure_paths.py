@@ -32,12 +32,15 @@ def test_real_adapter_invalid_tool_response_recovers_within_graph(tmp_path):
                         "message": {
                             "tool_calls": [
                                 {
-                                    "id": f"call-{len(attempts)}",
+                                    "id": f"call-{len(attempts)}-{tool_name}",
                                     "function": {
-                                        "name": name,
+                                        "name": tool_name,
                                         "arguments": json.dumps({"items": ["WidgetA"]}),
                                     },
                                 }
+                                for tool_name in (
+                                    [name] if len(attempts) == 1 else [name, "lookup_price"]
+                                )
                             ]
                         },
                     }

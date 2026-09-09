@@ -22,13 +22,17 @@ class Events:
 def request(store, c=None):
     c = c or candidate()
     report = validate(
-        c, store.lookup([line.item_name_normalized for line in c.items]), store.policy
+        c,
+        store.lookup([line.item_name_normalized for line in c.items]),
+        store.policy,
+        store.lookup_price([line.item_name_normalized for line in c.items]),
     )
     review = ReviewOutcome(
         candidate_digest=report.candidate_digest,
         proposal=Proposal(
             decision="approved",
             reason_summary="Facts verified",
+            finding_codes=[f.code for f in report.findings],
             checks={"unavailable_checks": "Not applicable"},
         ),
         critique=Critique(verdict="accept"),
@@ -54,7 +58,13 @@ def test_atomic_paid_duplicate_version_and_reopen(tmp_path):
         items=[
             candidate()
             .items[0]
-            .model_copy(update={"source_unit_price": Decimal(15), "source_line_total": Decimal(30)})
+            .model_copy(
+                update={
+                    "source_unit_price": Decimal(15),
+                    "unit_price_usd": Decimal(15),
+                    "source_line_total": Decimal(30),
+                }
+            )
         ],
     )
     assert store.pay(request(store, changed), success).findings[0].code == "VERSION_CONFLICT"
@@ -222,7 +232,12 @@ def test_missing_unknown_charges_do_not_equal_zero():
 def test_fingerprint_reordering_and_distinct_prices():
     first = candidate().items[0]
     second = first.model_copy(
-        update={"line_id": "2", "source_unit_price": Decimal(15), "source_line_total": Decimal(30)}
+        update={
+            "line_id": "2",
+            "source_unit_price": Decimal(15),
+            "unit_price_usd": Decimal(15),
+            "source_line_total": Decimal(30),
+        }
     )
     c = candidate(items=[first, second])
     assert payment_fingerprint(c) == payment_fingerprint(

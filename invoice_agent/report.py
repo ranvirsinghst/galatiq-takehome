@@ -88,8 +88,18 @@ def render_report(result: RunResult, *, secrets: list[str] | None = None) -> str
                 for key in ("decision", "reason", "verdict", "issues", "required_changes")
                 if event.payload.get(key) is not None
             )
+            title = event_titles.get(event.event, event.event.replace("_", " ").capitalize())
+            if (
+                event.event in ("tool_requested", "tool_result")
+                and event.payload.get("name") == "lookup_price"
+            ):
+                title = (
+                    "Catalog price lookup requested"
+                    if event.event == "tool_requested"
+                    else "Catalog price lookup result"
+                )
             steps.append(
-                f'<li><div class="event-head"><b>{text(event_titles.get(event.event, event.event.replace("_", " ").capitalize()))}</b><small>#{event.sequence} · {text(elapsed)}</small></div>'
+                f'<li><div class="event-head"><b>{text(title)}</b><small>#{event.sequence} · {text(elapsed)}</small></div>'
                 f"<small>{text(event.stage)} · <code>{text(event.event)}</code> · {text(event.severity)}"
                 f"{' · ' + text(event.error_code) if event.error_code else ''}</small>{highlights}"
                 f"<details><summary>Recorded evidence</summary>{raw(event.payload)}</details></li>"
@@ -283,6 +293,19 @@ def render_report(result: RunResult, *, secrets: list[str] | None = None) -> str
                     for name, quantity in report.aggregate_quantities.items()
                 )
                 + "</ul>"
+            )
+        if report.catalog_evidence is not None:
+            parts.append(
+                "<h4>Catalog price evidence used for review (USD/unit)</h4><ul>"
+                + "".join(
+                    f"<li>{text(name)}: {text(price if price is not None else 'unavailable')}</li>"
+                    for name, price in report.catalog_evidence.prices.items()
+                )
+                + "</ul>"
+            )
+            parts.append(
+                "<b>Price checks performed</b>"
+                + paragraphs([c for c in report.performed_checks if c.startswith("price:")])
             )
         if report.unavailable_checks:
             parts.append("<b>Checks unavailable</b>" + paragraphs(report.unavailable_checks))

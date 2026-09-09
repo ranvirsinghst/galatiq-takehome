@@ -28,6 +28,7 @@ def test_live_messy_extraction_inventory_and_deterministic_rejection(tmp_path):
         settings.api_key.get_secret_value(),
         model=settings.model,
         base_url=settings.base_url,
+        timeout=settings.timeout_seconds,
         events=events,
         run_id=events.run_id,
     )
@@ -63,6 +64,7 @@ def test_live_clean_invoice_runs_through_committed_mock_payment(tmp_path):
         settings.api_key.get_secret_value(),
         model=settings.model,
         base_url=settings.base_url,
+        timeout=settings.timeout_seconds,
         events=events,
         run_id="live-clean",
     )
@@ -78,6 +80,13 @@ def test_live_clean_invoice_runs_through_committed_mock_payment(tmp_path):
         assert result.summary.final_inventory["WidgetA"] < 15
         names = {event.event for event in result.trace}
         assert {"tool_requested", "vp_propose", "vp_critique", "payment_committed"} <= names
+        prices = {
+            item: value
+            for event in result.trace
+            if event.event == "tool_result" and event.payload.get("name") == "lookup_price"
+            for item, value in event.payload.get("prices", {}).items()
+        }
+        assert prices == {"WidgetA": "250.00", "WidgetB": "500.00"}
         assert store.find_paid(result.results[0].identity) is not None
     finally:
         llm.close()

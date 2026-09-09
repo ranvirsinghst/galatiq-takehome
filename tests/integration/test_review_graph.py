@@ -62,10 +62,12 @@ def test_real_validator_review_and_payment_gate(tmp_path, item, quantity, paid):
                 item_name_normalized=item,
                 quantity_raw=quantity,
                 quantity=Decimal(quantity),
+                source_unit_price=Decimal(10),
+                unit_price_usd=Decimal(10),
             )
         ],
     )
-    report = validate(c, store.lookup([item]), policy)
+    report = validate(c, store.lookup([item]), policy, store.lookup_price([item]))
     outcome = review(c, report, EvidenceVP(), policy, NullEventSink())
     assert outcome.accepted
     calls = []
