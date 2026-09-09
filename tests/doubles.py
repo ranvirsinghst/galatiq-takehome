@@ -35,10 +35,11 @@ class ScenarioLLM:
             return LLMResponse(
                 tool_calls=[
                     LLMToolCall(
-                        call_id=f"lookup-{len(self.requests)}",
-                        name="lookup_inventory",
+                        call_id=f"{name}-{len(self.requests)}",
+                        name=name,
                         arguments={"items": payload["normalized_items"]},
                     )
+                    for name in ("lookup_inventory", "lookup_price")
                 ]
             )
         if request.phase in ("vp_propose", "vp_revise"):

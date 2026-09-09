@@ -20,6 +20,15 @@ class Scripted:
 def response(items, name="lookup_inventory", call_id="call-1"):
     return LLMResponse(
         tool_calls=[LLMToolCall(call_id=call_id, name=name, arguments={"items": items})]
+        + (
+            [
+                LLMToolCall(
+                    call_id=call_id + "-price", name="lookup_price", arguments={"items": items}
+                )
+            ]
+            if name == "lookup_inventory"
+            else []
+        )
     )
 
 
@@ -30,7 +39,7 @@ def test_real_graph_calls_real_inventory_without_mutation(tmp_path):
     result = validate_with_tools(candidate(), store, llm, store.policy, events)
     assert result.report.complete and not result.report.blockers
     assert result.tool_rounds == 1
-    assert [e.event for e in events.events] == ["tool_requested", "tool_result"]
+    assert [e.event for e in events.events] == ["tool_requested", "tool_result"] * 2
     assert store.snapshot().stock["WidgetA"] == 15
     assert store.connection.execute("SELECT count(*) FROM payments").fetchone()[0] == 0
     store.close()

@@ -97,6 +97,9 @@ class ValidationFinding(Contract):
     expected: Any = None
     evidence_refs: list[str] = Field(default_factory=list)
     origin: FindingOrigin = FindingOrigin.POLICY
+    pricing_item: str | None = None
+    deviation_ratio: Decimal | None = None
+    tolerance_ratio: Decimal | None = None
 
 
 class SourceDocument(Contract):
@@ -172,11 +175,24 @@ class InventorySnapshot(Contract):
     stock: dict[str, int | None]
 
 
+class CatalogEvidence(Contract):
+    run_id: str
+    prices: dict[str, Decimal | None]
+
+    @field_validator("prices")
+    @classmethod
+    def valid_prices(cls, prices: dict[str, Decimal | None]) -> dict[str, Decimal | None]:
+        if any(v is not None and (not v.is_finite() or v <= 0) for v in prices.values()):
+            raise ValueError("Catalog prices must be positive finite USD decimals")
+        return prices
+
+
 class ValidationReport(Contract):
     candidate_digest: str
     findings: list[ValidationFinding] = Field(default_factory=list)
     aggregate_quantities: dict[str, int] = Field(default_factory=dict)
     stock_snapshot: InventorySnapshot
+    catalog_evidence: CatalogEvidence | None = None
     performed_checks: list[str] = Field(default_factory=list)
     unavailable_checks: list[str] = Field(default_factory=list)
     complete: bool = False
@@ -300,6 +316,8 @@ class PaymentRequest(Contract):
             raise ValueError("Payment requires complete invoice identity and dates")
         if self.amount_usd <= 0 or self.amount_usd != c.total_usd:
             raise ValueError("Payment amount must equal positive candidate total")
+        if r.catalog_evidence is None or r.catalog_evidence.run_id != self.run_id:
+            raise ValueError("Payment requires run-bound catalog evidence")
         if not r.complete or r.blockers or any(f.severity == Severity.BLOCKER for f in c.findings):
             raise ValueError("Payment requires complete blocker-free validation")
         if r.candidate_digest != candidate_digest(c) or v.candidate_digest != r.candidate_digest:

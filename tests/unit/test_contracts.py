@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from invoice_agent.models import (
+    CatalogEvidence,
     Critique,
     Decision,
     ErrorCode,
@@ -51,6 +52,7 @@ def request(c):
         aggregate_quantities={"WidgetA": 2},
         stock_snapshot=InventorySnapshot(run_id="r", stock={"WidgetA": 15}),
         complete=True,
+        catalog_evidence=CatalogEvidence(run_id="r", prices={"WidgetA": Decimal(250)}),
     )
     review = ReviewOutcome(
         candidate_digest=digest,

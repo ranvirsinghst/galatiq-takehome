@@ -70,8 +70,10 @@ def test_eligible_high_value_retains_checklist_and_critique(
 ):
     path = invoice(tmp_path / "high.json", "HIGH", "2026-01-01", 1)
     data = json.loads(path.read_text())
-    data["line_items"][0]["unit_price"] = 12000
-    data["subtotal"] = data["total"] = 12000
+    data["line_items"][0]["unit_price"] = 250
+    data["subtotal"] = 250
+    data["shipping"] = 11750
+    data["total"] = 12000
     path.write_text(json.dumps(data))
     llm = HighValueVP(omit_checks, reject_critique)
     result = execute([path], tmp_path, llm=llm)

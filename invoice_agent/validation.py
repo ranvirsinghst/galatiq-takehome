@@ -4,7 +4,10 @@ from datetime import timedelta
 from decimal import Decimal
 
 from .config import Policy
+from .errors import AgentError
 from .models import (
+    CatalogEvidence,
+    ErrorCode,
     FindingOrigin,
     InventorySnapshot,
     InvoiceCandidate,
@@ -222,7 +225,10 @@ def validate_source(candidate: InvoiceCandidate, policy: Policy) -> list[Validat
 
 
 def validate(
-    candidate: InvoiceCandidate, snapshot: InventorySnapshot, policy: Policy
+    candidate: InvoiceCandidate,
+    snapshot: InventorySnapshot,
+    policy: Policy,
+    catalog: CatalogEvidence | None = None,
 ) -> ValidationReport:
     findings, performed, unavailable, demand = _source_validation(candidate, policy)
     for item, quantity in sorted(demand.items()):
@@ -257,14 +263,106 @@ def validate(
             continue
         findings.append(finding)
     performed.append("inventory")
+    already_blocked = any(f.severity == Severity.BLOCKER for f in findings)
+    if catalog is not None and catalog.run_id != snapshot.run_id:
+        raise ValueError("Catalog evidence run identity mismatch")
+    pricing_complete = True
+    rate = policy.fx_rates.get(candidate.source_currency or "")
+    for line in candidate.items:
+        check = f"price:{line.line_id}"
+        price_item = line.item_name_normalized
+        if (
+            not price_item
+            or rate is None
+            or line.quantity is None
+            or line.quantity <= 0
+            or line.quantity != line.quantity.to_integral_value()
+            or any(f.severity == Severity.BLOCKER and line.line_id in f.line_ids for f in findings)
+        ):
+            unavailable.append(check)
+            pricing_complete = False
+            continue
+        if line.source_unit_price is None:
+            unavailable.append(check)
+            pricing_complete = False
+            if not already_blocked:
+                findings.append(
+                    ValidationFinding(
+                        code="PRICE_CHECK_UNAVAILABLE",
+                        severity=Severity.BLOCKER,
+                        message=f"{price_item}: source unit price is missing",
+                        line_ids=[line.line_id],
+                        field=price_item,
+                        evidence_refs=line.evidence_refs,
+                    )
+                )
+            continue
+        charged = convert_to_usd(line.source_unit_price, rate)
+        if charged != line.unit_price_usd:
+            findings.append(
+                ValidationFinding(
+                    code="USD_CONVERSION_MISMATCH",
+                    severity=Severity.BLOCKER,
+                    message="USD unit price differs from fixed-policy source conversion",
+                    line_ids=[line.line_id],
+                    field="unit_price_usd",
+                )
+            )
+            unavailable.append(check)
+            pricing_complete = False
+            continue
+        if catalog is None or price_item not in catalog.prices:
+            unavailable.append(check)
+            pricing_complete = False
+            continue
+        reference = catalog.prices[price_item]
+        if reference is None:
+            unavailable.append(check)
+            pricing_complete = False
+            if not already_blocked:
+                raise AgentError(
+                    ErrorCode.STORAGE_ERROR,
+                    f"Catalog price unavailable for eligible item {price_item}",
+                )
+            continue
+        performed.append(check)
+        tolerance = policy.price_tolerance_ratio
+        over = charged > reference * (1 + tolerance)
+        under = charged < reference * (1 - tolerance)
+        if over or under:
+            deviation = (charged - reference) / reference
+            note_values = [line.description_raw] + [
+                str(value)
+                for tokens in (line.source_tokens, candidate.source_tokens)
+                for key, value in tokens.items()
+                if any(word in key.lower() for word in ("note", "description", "comment")) and value
+            ]
+            notes = "; ".join(dict.fromkeys(value for value in note_values if value))
+            findings.append(
+                ValidationFinding(
+                    code="PRICE_OVERCHARGE" if over else "PRICE_UNDER_CATALOG",
+                    severity=Severity.BLOCKER if over else Severity.WARNING,
+                    message=f"{price_item}: ${charged:.2f}/unit vs catalog ${reference:.2f} ({deviation:+.2%}; allowed ±{tolerance:.2%}). Source note: {notes}",
+                    field=price_item,
+                    line_ids=[line.line_id],
+                    observed=str(charged),
+                    expected=str(reference),
+                    evidence_refs=line.evidence_refs,
+                    pricing_item=price_item,
+                    deviation_ratio=deviation,
+                    tolerance_ratio=tolerance,
+                )
+            )
     return ValidationReport(
         candidate_digest=candidate_digest(candidate),
         findings=findings,
         aggregate_quantities=demand,
         stock_snapshot=snapshot,
+        catalog_evidence=catalog,
         performed_checks=performed,
         unavailable_checks=unavailable,
-        complete=all(item in snapshot.stock for item in demand),
+        complete=all(item in snapshot.stock for item in demand)
+        and (already_blocked or pricing_complete),
         requires_high_value_review=candidate.total_usd is not None
         and candidate.total_usd > policy.high_value_threshold,
     )

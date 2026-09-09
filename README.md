@@ -1,6 +1,6 @@
 # Galatiq invoice agent
 
-Process invoices with Python, LangGraph, xAI Grok, and SQLite. The agent extracts invoice details, checks inventory and totals, simulates VP approval, and records mock payments with an audit trail. **No real payments are made.**
+Process invoices with Python, LangGraph, xAI Grok, and SQLite. The agent extracts invoice details, checks inventory, totals and catalog prices, simulates VP approval, and records mock payments with an audit trail. **No real payments are made.**
 
 ## Quick start
 
@@ -26,6 +26,9 @@ Keep `.env` local. The default model is `grok-4.6`; set `XAI_MODEL` to change it
 - Ingests the entire folder first, then reviews invoices oldest first. Successful payments decrement stock. **Every invocation starts with fresh inventory and a fresh payment ledger.** Duplicate-payment protection applies within a run only.
 - Rejects invalid quantities, unknown items, insufficient stock, and inconsistent totals with reasons. Eligible invoices proceed to VP approval, critique, and bounded revision; deterministic checks guard payment.
 - Stores amounts in USD using fixed mock exchange rates.
+- Looks up reference prices through a typed catalog tool. Unit prices more than 10% above the reference block payment; prices more than 10% below it require VP warning acknowledgment. Exactly ±10% passes.
+
+The catalog is derived from the supplied invoice corpus, with a 10% demo tolerance band. Overcharges within that band, or prices inflated consistently across the corpus, remain undetected. This does not verify vendor contracts.
 
 The terminal shows progress, outcomes, rejection reasons, and a final summary. Each run saves an HTML report, invoice results, audit and trace logs, metrics, and its SQLite database under `runs/<run_id>/`.
 
@@ -60,7 +63,7 @@ RUN_LIVE_XAI=1 uv run pytest tests/live -q
 
 ### Deterministic payment checks
 
-- **Decision:** Enforce payment rules in code. Reject invalid quantities, unknown items, stock overruns, and inconsistent totals before reaching the VP review stage. Check stock once again at payment and commit the ledger and inventory changes together.
+- **Decision:** Enforce payment rules in code. Reject invalid quantities, unknown items, stock overruns, inconsistent totals, and above-band catalog prices before reaching the VP review stage. Independently verify catalog evidence and current stock at payment and commit the ledger and inventory changes together.
 - **Rationale:** These rules need repeatable answers. An LLM approval cannot waive a payment blocker.
 - **Tradeoffs:** Rules need explicit maintenance and only catch problems we've defined. They don't prove the extracted facts are correct or the vendor is legitimate.
 

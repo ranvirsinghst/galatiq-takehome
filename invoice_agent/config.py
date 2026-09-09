@@ -20,6 +20,7 @@ class Policy(BaseModel):
         default_factory=lambda: {"USD": Decimal("1.00"), "EUR": Decimal("1.10")}
     )
     high_value_threshold: Decimal = Field(default=Decimal("10000.00"), gt=0)
+    price_tolerance_ratio: Decimal = Field(default=Decimal("0.10"), ge=0, lt=1, allow_inf_nan=False)
     arithmetic_tolerance: Decimal = Field(default=Decimal("0.01"), ge=0)
     item_aliases: Mapping[str, str] = Field(
         default_factory=lambda: {

@@ -6,3 +6,5 @@ CREATE TABLE payments (
  run_id TEXT NOT NULL, committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(vendor, invoice_number)
 );
+
+CREATE TABLE prices (item TEXT PRIMARY KEY REFERENCES inventory(item), unit_price_usd TEXT NOT NULL);

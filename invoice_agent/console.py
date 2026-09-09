@@ -87,7 +87,7 @@ class ConsoleReporter:
         elif event.event == "model_request":
             message = (
                 {
-                    "inventory": "Checking inventory",
+                    "inventory": "Checking inventory and catalog prices",
                     "vp_propose": "Checking payment approval",
                     "vp_critique": "Checking the approval decision",
                     "vp_revise": "Rechecking approval after an issue was found",
@@ -111,6 +111,12 @@ class ConsoleReporter:
         elif event.event == "trace_output_unavailable":
             message = "Warning: Activity log could not be saved; check the saved results"
         elif self.trace and event.event == "tool_result":
+            prices = payload.get("prices")
+            if isinstance(prices, dict):
+                message = "Trace: Catalog price lookup (USD/unit): " + ", ".join(
+                    f"{item}={price if price is not None else 'unavailable'}"
+                    for item, price in prices.items()
+                )
             stock = payload.get("stock")
             if isinstance(stock, dict):
                 message = "Trace: Inventory lookup: " + ", ".join(
@@ -148,6 +154,13 @@ class ConsoleReporter:
         else:
             status = "Approved; no payment made"
         self._line(f"{name}: {status}", stream)
+        if (
+            item.decision == "rejected"
+            and item.validation
+            and item.validation.blockers
+            and item.review is None
+        ):
+            self._line(f"{name}: VP review skipped because invoice rules blocked payment.", stream)
         # Prefer concrete validation failures over the model's longer explanation.
         details = [f.message for f in item.findings if f.severity == Severity.BLOCKER]
         if item.decision == "rejected" or item.error:
