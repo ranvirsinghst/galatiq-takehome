@@ -5,13 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from invoice_agent.approval import review
 from invoice_agent.config import Policy, load_settings
 from invoice_agent.database import SQLitePaymentStore
-from invoice_agent.ingestion import ingest
 from invoice_agent.llm import XAIClient
-from invoice_agent.readers import read_source
-from invoice_agent.tools import validate_with_tools
 
 pytestmark = [
     pytest.mark.live,
@@ -22,37 +18,36 @@ pytestmark = [
 ]
 
 
-class Events:
-    def __init__(self):
-        self.events = []
+def test_live_messy_extraction_inventory_and_deterministic_rejection(tmp_path):
+    from invoice_agent.output import EventCollector
+    from invoice_agent.runner import RunDependencies, run
 
-    def emit(self, event):
-        self.events.append(event)
-
-
-def test_live_messy_extraction_inventory_tools_and_reflection(tmp_path):
     settings = load_settings(Path(".env"))
-    events = Events()
+    events = EventCollector("live-reject", secrets=[settings.api_key.get_secret_value()])
     llm = XAIClient(
         settings.api_key.get_secret_value(),
         model=settings.model,
         base_url=settings.base_url,
         events=events,
-        run_id="live",
+        run_id=events.run_id,
     )
-    store = SQLitePaymentStore(tmp_path / "live.db", "live")
+    store = SQLitePaymentStore(tmp_path / "live.db", events.run_id, events=events)
     try:
-        source = read_source(Path("data/invoices/invoice_1002.txt"), "s")
-        ingested = ingest(source, llm, Policy(), events)
-        assert ingested.error is None and ingested.candidate is not None
-        validated = validate_with_tools(ingested.candidate, store, llm, Policy(), events)
-        assert validated.error is None and validated.report is not None
-        assert any(f.code == "INSUFFICIENT_STOCK" for f in validated.report.findings)
-        reviewed = review(ingested.candidate, validated.report, llm, Policy(), events)
-        assert reviewed.error is None and reviewed.accepted
-        assert reviewed.proposal.decision == "rejected"
-        names = {event.event for event in events.events}
-        assert {"tool_requested", "vp_propose", "vp_critique"} <= names
+        result = run(
+            [Path("data/invoices/invoice_1002.txt")], RunDependencies(store, llm, events, Policy())
+        )
+        assert result.summary.operational_errors == 0
+        item = result.results[0]
+        assert item.decision == "rejected" and item.payment.status == "not_paid"
+        assert any(f.code == "INSUFFICIENT_STOCK" for f in item.findings)
+        assert any(f.code == "TERMS_DATE_MISMATCH" for f in item.findings)
+        assert item.review is None and item.validation is not None
+        assert item.attempts["vp_calls"] == 0
+        names = {e.event for e in result.trace}
+        assert {"tool_requested", "review_rejected_by_rules"} <= names
+        assert not {"vp_propose", "vp_critique", "vp_revise", "payment_committed"} & names
+        assert result.summary.new_payments == 0
+        assert store.snapshot().stock["GadgetX"] == 5
     finally:
         store.close()
         llm.close()

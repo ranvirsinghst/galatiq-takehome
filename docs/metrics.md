@@ -32,7 +32,7 @@ When provider cost is absent, the fallback supports exact model `grok-4.3` using
 
 ## Latency
 
-`wall_ms` measures elapsed run time through processing and final inventory retrieval, before final report serialization. `agent_latency_ms` groups full stage duration by ingestion, validation, approval, and payment, including local work and model calls. `model_latency_ms` separately groups only model-call time by ingestion, inventory, VP proposal, critique, and revision. Each model call includes its transport retries and backoff, including failed calls. `model_calls` counts semantic calls; `transport_attempts` counts actual attempted HTTP requests. These values identify expensive stages without confusing one logical call with its retries.
+`wall_ms` measures elapsed run time through processing and final inventory retrieval, before final report serialization. `agent_latency_ms` groups full stage duration by ingestion, validation, approval, and payment, including local work and model calls. `model_latency_ms` separately groups only model-call time by ingestion, inventory, VP proposal, critique, and revision. Each model call includes its transport retries and backoff, including failed calls. `model_calls` counts semantic calls; `transport_attempts` counts actual attempted HTTP requests. These values identify expensive stages without confusing one logical call with its retries. Stages skipped by deterministic rejection (such as VP approval) have no latency entry.
 
 ## Error rates
 

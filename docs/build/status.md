@@ -17,7 +17,7 @@
 
 ## Verification evidence
 
-- Full offline suite: **306 passed**, including the full-CLI subprocess HTTP/SQLite test.
+- Full offline suite: **311 passed**, including the full-CLI subprocess HTTP/SQLite test.
 - Previously measured branch-inclusive application coverage, before the reporting additions: **94%**. Critical modules: database 93%, validation 93%, graph 91%, identity/payment 100%.
 - Ruff checks and formatting pass; mypy passes 23 application/CLI/evaluator files.
 - Fixture evaluation: **23/23 cases pass** using reviewed extraction fixtures and scripted model responses, with actual readers, graphs and SQLite.
@@ -55,3 +55,14 @@ Final live evaluation: **23/23 cases pass** using real xAI, covering 20 isolated
 Live progress remains concise; detailed events flush to trace.jsonl per run. Final output includes a compact invoice table and metrics.json provides token/cost, full-stage and model-phase latency, operational error rate, and deduplicated blocked-payment exposure. Exposure is potential, not realized savings. Post-commit trace failure and console failure regressions preserve accurate payment/report state.
 
 Final two-file live verification (`runs/330e5163da49462aba073c7519d7988e/`): 1 payment, 1 rejection, 19,331 tokens, USD 0.02815790 provider-reported cost (USD 0.028158 displayed), approximately 49.6 seconds, USD 15,000 blocked exposure. Metrics were reconciled to trace usage events; detailed trace never appeared on stdout/stderr. Offline evaluation remains 23/23. Definitions and pricing provenance: [Run metrics](../metrics.md).
+
+
+## Combined review follow-up
+
+The main processing graph now has identity, review, and payment nodes. The review node retains actual inventory tool calls and deterministic validation. Known blockers reject before VP model calls, including high-value invoices; eligible invoices retain proposal/critique/revision. The pure validator and final payment authority remain separate. Reasons: [ADR-007](../decisions/README.md#adr-007-one-review-node-with-early-deterministic-rejection).
+
+- 311 unit/integration tests pass; both live xAI tests pass (33.39 seconds); offline evaluation 23/23. Ruff lint/format and mypy pass.
+- Real two-file run: same 1001 payment and 1002 rejection, 6 calls versus earlier 8; observed 30.4 seconds versus 49.6 seconds. New run `runs/1c4b20e906894235863eaa765c6b6a88/`.
+- Real full-folder run `runs/2ac9720f4eee4a04960af1c1344283a1/`: 20 completed, 2 payments totaling USD 6,890, 18 rejected, no operational errors; final stock A2/B3/G5/Fake0. SQLite verified. All 17 rule-blocked invoices have no VP review/calls; the remaining rejection is a changed paid version.
+- This full-folder run recorded 40 model calls/responses, 78,729 tokens, USD 0.11590070 provider-reported spend, and 213.7 seconds. The earlier full-folder observation recorded 81 model responses and approximately 405 seconds. These are observed runs, not a controlled benchmark; model outputs, cache state and service timing vary. Regression tests establish the architectural call savings for known blockers independently of timing.
+- Independent review found one documentation metadata placement error, fixed and verified by YAML parsing. No additional functionality or payment-safety regression found; no deferred findings.

@@ -1,5 +1,7 @@
 # D — Inventory tool and deterministic validation
 
+> Current policy update (2026-09-08): the processing graph has one combined review node. Inventory tools and deterministic checks run first; hard blockers (including on high-value invoices) reject immediately with no VP calls. Eligible invoices retain the VP proposal/critique/revision rules below. See the [architecture decision log](../../decisions/README.md) for rationale and superseded behavior.
+
 ## Boundary
 
 Own `tools.py`, `validation.py`, and associated unit/integration tests. Consume A contracts, C runtime, and E read-only inventory port. Validation code cannot mutate stock, insert ledger records, or invoke payment. It sees the current snapshot for one processing position, not a cached seed snapshot.

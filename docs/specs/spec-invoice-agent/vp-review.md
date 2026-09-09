@@ -1,5 +1,7 @@
 # F — Automated VP review and reflection subgraph
 
+> Current policy update (2026-09-08): the processing graph has one combined review node. Inventory tools and deterministic checks run first; hard blockers (including on high-value invoices) reject immediately with no VP calls. Eligible invoices retain the VP proposal/critique/revision rules below. See the [architecture decision log](../../decisions/README.md) for rationale and superseded behavior.
+
 ## Boundary
 
 Own `approval.py` and review tests. Implement one VP persona with propose, critique, and revise phases. Consume canonical invoice facts and a deterministic validation report. The agent has no payment tool and cannot mutate source data, stock, or findings.

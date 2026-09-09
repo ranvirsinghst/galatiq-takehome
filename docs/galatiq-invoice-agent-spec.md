@@ -1,5 +1,7 @@
 # Galatiq invoice agent — implementation specification
 
+> Policy history: [ADR-007](decisions/README.md#adr-007-one-review-node-with-early-deterministic-rejection) supersedes mandatory VP review for deterministic blockers. The combined review node rejects them before VP calls; eligible invoices retain reflection and high-value checks.
+
 Status: build-ready specification, 2026-09-07.
 
 > Parallel implementation entry point: [module specification package](specs/spec-invoice-agent/SPEC.md), including shared contracts, module ownership, and rigorous test gates. The package refines implementation boundaries and error/retry semantics while preserving the business decisions below.

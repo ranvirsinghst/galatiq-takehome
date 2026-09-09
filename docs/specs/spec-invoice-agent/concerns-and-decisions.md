@@ -1,5 +1,7 @@
 # Important concerns and recorded defaults
 
+> Current policy update (2026-09-08): the processing graph has one combined review node. Inventory tools and deterministic checks run first; hard blockers (including on high-value invoices) reject immediately with no VP calls. Eligible invoices retain the VP proposal/critique/revision rules below. See the [architecture decision log](../../decisions/README.md) for rationale and superseded behavior.
+
 No unresolved high-level architectural question blocks implementation. The following concerns require explicit implementation behavior and evidence, not another broad design round.
 
 | Concern | Decision/default | Owner and proof |

@@ -49,3 +49,10 @@ The full live evaluator passed **23/23 cases** (20 isolated sources and 3 statef
 The reporting update was verified with a folder containing invoices 1001 and 1002. Its final table showed PAID USD 5,000 and REJECTED USD 15,000 respectively. The report recorded 19,331 tokens, USD 0.028158 estimated spend, approximately 49.6 seconds, 0% processing errors, and USD 15,000 potential blocked-payment exposure (not realized savings). Counts and cost matched the saved trace events.
 
 Local evidence: `runs/330e5163da49462aba073c7519d7988e/trace.jsonl` and `metrics.json`. Detailed traces are stored per run and never printed, including when `--trace` is specified. See [metric definitions](metrics.md).
+
+
+## Combined review policy
+
+The current flow rejects deterministic blockers without VP calls; otherwise it retains proposal and critique. [ADR-007](decisions/README.md#adr-007-one-review-node-with-early-deterministic-rejection) records why and which former policy it replaces.
+
+Current full-folder evidence: `runs/2ac9720f4eee4a04960af1c1344283a1/`. All 20 invoices completed with the same two payments totaling USD 6,890 and final stock as above. Seventeen rule rejections skipped VP review; the paid-version conflict rejected in identity checking. This observed run used 40 model calls, 78,729 tokens, USD 0.11590070, and 213.7 seconds. Historical example timings above describe earlier revisions, not current performance guarantees.

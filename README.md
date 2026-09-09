@@ -2,7 +2,7 @@
 
 A local multi-agent invoice processor built with Python, LangGraph, xAI Grok, and SQLite. It extracts messy invoices, checks inventory and arithmetic, simulates VP approval with critique and revision, and records mock payments atomically with stock changes.
 
-The original take-home requirements are preserved in [the assignment brief](docs/assignment.md). Architecture and implementation contracts are in [the module specs](docs/specs/spec-invoice-agent/SPEC.md).
+The original take-home requirements are preserved in [the assignment brief](docs/assignment.md). Architecture and implementation contracts are in [the module specs](docs/specs/spec-invoice-agent/SPEC.md). High-level decisions, alternatives, tradeoffs, and evidence are recorded in the [architecture decision log](docs/decisions/README.md).
 
 ## Run locally
 
@@ -40,14 +40,15 @@ The inventory depletion follows the assignment's simulation rules; it does not m
 ```text
 Read/map or extract -> source checks -> bounded correction -> ingestion barrier
 Date-order loop:
-  identity -> inventory tool -> deterministic validation
-    -> VP proposal -> critique -> bounded revision
-    -> final payment gate -> SQLite transaction / rejection
+  identity -> review invoice -> final payment gate -> SQLite transaction
+                | inventory tool -> deterministic validation
+                | blockers: reject immediately, skip VP
+                | eligible: VP proposal -> critique -> bounded revision
 ```
 
 Known JSON/XML/CSV structures map deterministically. Grok interprets TXT/PDF and unfamiliar valid structured layouts with field evidence. The validation agent actually calls `lookup_inventory`; SQL facts and independent coverage checks determine whether every item was validated.
 
-One VP persona produces a proposal and reviews it in a separate model call. Invoices above USD 10,000 require explicit enhanced checks. Up to two revisions are allowed. Mechanical safeguards enforce blockers and checklist completeness even if the proposal and critique both incorrectly approve.
+One combined review node coordinates inventory validation and VP review. Hard blockers reject immediately with deterministic reasons, including above USD 10,000; the audit explicitly records that VP review was skipped. Otherwise, one VP persona produces a proposal and reviews it in a separate model call. Eligible invoices above USD 10,000 require explicit enhanced checks, whether the VP ultimately approves or rejects. Up to two revisions are allowed. Mechanical safeguards enforce blockers and checklist completeness even if the proposal and critique both incorrectly approve.
 
 A semantic fingerprint identifies equivalent payable content. A separate full candidate digest binds the approved facts to validation. Payment revalidates the evidence, rechecks current stock, and writes ledger/stock in one transaction. The payment function is a **local mock with no bank connection or external side effect**.
 
