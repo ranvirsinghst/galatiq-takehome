@@ -108,7 +108,8 @@ def test_whole_cli_process_through_http_and_committed_ledger(tmp_path):
         server.server_close()
         thread.join(timeout=5)
     assert result.returncode == 0, result.stderr
-    assert "Rejected by deterministic rules; VP review skipped" in result.stderr
+    assert "Reviewing oldest invoices first" in result.stderr
+    assert "deterministic" not in result.stderr
     rows = [json.loads(line) for line in result.stdout.splitlines()]
     assert [r["identity"]["invoice_number"] for r in rows[:-1]] == ["INV-1", "INV-2"]
     assert rows[-1]["new_payments"] == 1 and rows[-1]["rejected"] == 1

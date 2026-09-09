@@ -47,9 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     diagnostic_secrets: list[str] = []
 
     def diagnostic(code: str, message: str) -> None:
-        payload = (
-            json.dumps({"error": code, "message": message}) if args.json else f"{code}: {message}"
-        )
+        payload = json.dumps({"error": code, "message": message}) if args.json else message
         print(clean_terminal(payload, diagnostic_secrets), file=sys.stderr, flush=True)
 
     try:
@@ -103,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             events=events,
             run_id=run_id,
         )
-        print(clean_terminal(f"Run artifacts: {run_dir}", [key]), file=sys.stderr, flush=True)
+        print(clean_terminal(f"Saving results to: {run_dir}", [key]), file=sys.stderr, flush=True)
         with (
             (run_dir / "results.jsonl").open("w", encoding="utf-8") as artifact,
             (run_dir / "audit.jsonl").open("w", encoding="utf-8") as audit,
@@ -137,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print(
             clean_terminal(
-                f"Interrupted; partial outcomes and committed ledger remain in {run_dir}. No complete success summary emitted.",
+                f"Stopped early. Completed results and simulated payments are saved in {run_dir}.",
                 [settings.api_key.get_secret_value()],
             ),
             file=sys.stderr,
@@ -147,19 +145,19 @@ def main(argv: list[str] | None = None) -> int:
         diagnostic(
             "RUN_FAILED",
             (
-                f"Processing completed; saved summary and metrics in {run_dir}; terminal reporting failed."
+                f"Processing completed. Results are saved in {run_dir}, but could not be displayed."
                 if metrics_saved
-                else f"Run could not complete; partial results and any committed payments remain in {run_dir}. No complete success summary emitted. Check storage and provider configuration."
+                else f"Run stopped early. Completed results and simulated payments are saved in {run_dir}. Check available disk space and service settings."
             ),
         )
         return 1
-    except Exception as exc:
+    except Exception:
         diagnostic(
             "INTERNAL_ERROR",
             (
-                f"Processing completed; saved summary and metrics in {run_dir}; terminal reporting failed ({type(exc).__name__})."
+                f"Processing completed. Results are saved in {run_dir}, but could not be displayed."
                 if metrics_saved
-                else f"Unexpected run failure ({type(exc).__name__}); partial results and any committed payments remain in {run_dir}. No complete success summary emitted."
+                else f"An unexpected problem stopped the run. Completed results and simulated payments are saved in {run_dir}."
             ),
         )
         return 1
@@ -177,9 +175,7 @@ def main(argv: list[str] | None = None) -> int:
                 save_metrics(partial)
                 print(
                     clean_terminal(
-                        f"Partial run metrics saved: {run_dir / 'metrics.json'}; "
-                        f"estimated token spend: {partial.estimated_api_cost_usd if partial.estimated_api_cost_usd is not None else 'unavailable'} USD; "
-                        f"potential loss avoided (blocked exposure): {partial.blocked_payment_exposure_usd:.2f} USD, not realized savings",
+                        f"Partial run details saved to: {run_dir / 'metrics.json'}",
                         diagnostic_secrets,
                     ),
                     file=sys.stderr,
