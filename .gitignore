@@ -22,3 +22,8 @@ dist/
 _bmad/render/
 _bmad/custom/*.user.toml
 _bmad/config.user.toml
+
+# Local documentation and BMAD workspace; never publish.
+/docs/
+/_bmad/
+/_bmad-output/
