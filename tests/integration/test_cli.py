@@ -1,6 +1,8 @@
 import io
 import json
 
+import pytest
+
 from invoice_agent.models import TraceEvent
 from invoice_agent.output import EventCollector, write_jsonl
 from tests.integration.test_batch import execute, invoice
@@ -370,3 +372,180 @@ def test_real_client_zero_call_rejection_reports_zero_cost(tmp_path):
     assert result.summary.metrics.model_calls == 0
     assert result.summary.metrics.estimated_api_cost_usd == 0
     assert result.summary.metrics.cost_complete and result.summary.metrics.usage_complete
+
+
+def test_cli_creates_html_report_and_opens_only_when_requested(tmp_path, monkeypatch, capsys):
+    import webbrowser
+
+    import main
+    from tests.doubles import ScenarioLLM
+
+    class LocalModel(ScenarioLLM):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def close(self):
+            pass
+
+    opened = []
+    monkeypatch.setenv("XAI_API_KEY", "test-only-placeholder")
+    monkeypatch.setattr(main, "XAIClient", LocalModel)
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    for auto_open in (False, True):
+        output = tmp_path / ("opened" if auto_open else "quiet")
+        arguments = ["--invoice_path", str(path), "--output_dir", str(output), "--json"]
+        if auto_open:
+            arguments.append("--open-report")
+        assert main.main(arguments) == 0
+        captured = capsys.readouterr()
+        rows = [json.loads(line) for line in captured.out.splitlines()]
+        assert rows[-1]["new_payments"] == 1
+        report = next(output.glob("*/report.html"))
+        assert "INV-1" in report.read_text()
+        assert str(report) in captured.err
+        assert opened == ([report.resolve().as_uri()] if auto_open else [])
+
+
+def _inject_report_model(monkeypatch):
+    import main
+    from tests.doubles import ScenarioLLM
+
+    class LocalModel(ScenarioLLM):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def close(self):
+            pass
+
+    monkeypatch.setenv("XAI_API_KEY", "test-only-placeholder")
+    monkeypatch.setattr(main, "XAIClient", LocalModel)
+
+
+def test_interrupted_cli_report_includes_paid_result_and_unfinished_process(
+    tmp_path, monkeypatch, capsys
+):
+    import main
+    from tests.unit.test_report import Document
+
+    _inject_report_model(monkeypatch)
+    folder = tmp_path / "invoices"
+    folder.mkdir()
+    invoice(folder / "a.json", "INV-PAID", "2026-01-01")
+    invoice(folder / "b.json", "INV-PENDING", "2026-01-02")
+    original_run = main.run
+
+    def interrupted_run(paths, dependencies, skipped):
+        original_run(paths[:1], dependencies, skipped)
+        dependencies.events.source_id = "source-0002"
+        dependencies.events.record("ingestion", "ingest_started", filename="b.json")
+        dependencies.events.record("ingestion", "extraction_started", detail="unfinished-evidence")
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(main, "run", interrupted_run)
+    output = tmp_path / "runs"
+    assert main.main(["--invoice_path", str(folder), "--output_dir", str(output), "--json"]) == 130
+    captured = capsys.readouterr()
+    directory = next(output.iterdir())
+    parsed = Document((directory / "report.html").read_text())
+    assert "Partial run" in parsed.text
+    assert "1 of 2 invoice outcomes recorded" in parsed.text
+    assert "INV-PAID" in parsed.text and "$20.00" in parsed.text
+    assert "Unfinished source" in parsed.text and "source-0002" in parsed.text
+    assert "unfinished-evidence" in parsed.text
+    assert "INV-PENDING" not in parsed.text
+    metrics = json.loads((directory / "metrics.json").read_text())
+    assert not metrics["run_complete"] and metrics["run_error"]
+    rows = [json.loads(line) for line in captured.out.splitlines()]
+    assert len(rows) == 1 and rows[0]["payment"]["status"] == "paid"
+    assert str(directory / "report.html") in captured.err
+
+
+def test_cli_report_write_failure_preserves_payment_and_reports_failure(
+    tmp_path, monkeypatch, capsys
+):
+    import main
+
+    _inject_report_model(monkeypatch)
+
+    def failed_report(*args, **kwargs):
+        raise OSError("private path details")
+
+    monkeypatch.setattr(main, "write_report", failed_report)
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    output = tmp_path / "runs"
+    assert main.main(["--invoice_path", str(path), "--output_dir", str(output), "--json"]) == 1
+    captured = capsys.readouterr()
+    directory = next(output.iterdir())
+    saved = [json.loads(line) for line in (directory / "results.jsonl").read_text().splitlines()]
+    emitted = [json.loads(line) for line in captured.out.splitlines()]
+    assert saved[0]["payment"]["status"] == emitted[0]["payment"]["status"] == "paid"
+    assert saved[-1]["new_payments"] == emitted[-1]["new_payments"] == 1
+    assert json.loads((directory / "metrics.json").read_text())["run_complete"]
+    assert "REPORT_FAILED" in captured.err and str(directory) in captured.err
+    assert "private path details" not in captured.err
+
+
+@pytest.mark.parametrize("raises", [True, False])
+def test_browser_failure_keeps_report_and_success_status(tmp_path, monkeypatch, capsys, raises):
+    import webbrowser
+
+    import main
+
+    _inject_report_model(monkeypatch)
+
+    def failed_browser(url):
+        if raises:
+            raise OSError("browser unavailable")
+        return False
+
+    monkeypatch.setattr(webbrowser, "open", failed_browser)
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    output = tmp_path / "runs"
+    assert (
+        main.main(
+            ["--invoice_path", str(path), "--output_dir", str(output), "--json", "--open-report"]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    report = next(output.glob("*/report.html"))
+    assert "INV-1" in report.read_text()
+    assert "REPORT_OPEN_FAILED" in captured.err and str(report) in captured.err
+    rows = [json.loads(line) for line in captured.out.splitlines()]
+    assert rows[-1]["new_payments"] == 1
+
+
+def test_partial_html_survives_metrics_specific_write_failure(tmp_path, monkeypatch, capsys):
+    from pathlib import Path
+
+    import main
+    from tests.doubles import ScenarioLLM
+
+    class LocalModel(ScenarioLLM):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def close(self):
+            pass
+
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt()
+
+    original_open = Path.open
+
+    def fail_metrics(path, *args, **kwargs):
+        if path.name == "metrics.json.tmp":
+            raise OSError("metrics-specific failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setenv("XAI_API_KEY", "test-only-placeholder")
+    monkeypatch.setattr(main, "XAIClient", LocalModel)
+    monkeypatch.setattr(main, "run", interrupted)
+    monkeypatch.setattr(Path, "open", fail_metrics)
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    output = tmp_path / "runs"
+    assert main.main(["--invoice_path", str(path), "--output_dir", str(output)]) == 130
+    report = next(output.glob("*/report.html"))
+    assert "Partial run" in report.read_text()
+    assert not (report.parent / "metrics.json").exists()

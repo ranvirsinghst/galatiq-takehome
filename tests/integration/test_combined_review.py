@@ -53,6 +53,7 @@ class HighValueVP(ScenarioLLM):
             return LLMResponse(
                 content={
                     "verdict": "revise",
+                    "reason_summary": "The proposal leaves the concern unexplained.",
                     "issues": ["Unresolved concern"],
                     "required_changes": ["Explain concern"],
                 }

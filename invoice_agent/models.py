@@ -201,6 +201,8 @@ class Proposal(Contract):
 
 
 class Critique(Contract):
+    # Historical audit records predate explanatory critique text.
+    reason_summary: str = ""
     verdict: str = Field(pattern="^(accept|revise)$")
     issues: list[str] = Field(default_factory=list)
     required_changes: list[str] = Field(default_factory=list)

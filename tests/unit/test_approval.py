@@ -67,8 +67,15 @@ def proposal(decision="approved", **kwargs):
     return {"decision": decision, "reason_summary": "Evidence supports this decision.", **kwargs}
 
 
-ACCEPT = {"verdict": "accept"}
-REVISE = {"verdict": "revise", "issues": ["Reconsider evidence"]}
+ACCEPT = {
+    "verdict": "accept",
+    "reason_summary": "The decision matches the supplied validation evidence.",
+}
+REVISE = {
+    "verdict": "revise",
+    "reason_summary": "The decision needs another review of the evidence.",
+    "issues": ["Reconsider evidence"],
+}
 
 
 def test_clean_two_calls_and_real_graph_events():
@@ -217,8 +224,8 @@ def test_candidate_mutation_before_review_requires_no_model_calls():
 @pytest.mark.parametrize(
     "critique",
     [
-        {"verdict": "accept", "issues": ["Unsupported claim remains"]},
-        {"verdict": "accept", "required_changes": ["Recheck total"]},
+        {**ACCEPT, "issues": ["Unsupported claim remains"]},
+        {**ACCEPT, "required_changes": ["Recheck total"]},
     ],
 )
 def test_accept_with_unresolved_issues_never_authorizes(critique):
@@ -226,3 +233,74 @@ def test_accept_with_unresolved_issues_never_authorizes(critique):
     result = review(c, r, Script([proposal(), critique] * 3), Policy(), Events())
     assert not result.accepted and result.semantic_calls == 6
     assert result.rejection_reasons[0] == "REVIEW_EXHAUSTED"
+
+
+@pytest.mark.parametrize("reason", [None, "", " \n\t ", "I", " " * 50])
+def test_missing_or_blank_critique_rationale_recovers_within_revision_budget(reason):
+    c, r = setup()
+    invalid = {"verdict": "accept"}
+    if reason is not None:
+        invalid["reason_summary"] = reason
+    events = Events()
+    result = review(c, r, Script([proposal(), invalid, proposal(), ACCEPT]), Policy(), events)
+    assert result.accepted
+    assert result.semantic_calls == 4
+    assert result.revision_count == 1
+    assert result.critique.reason_summary == ACCEPT["reason_summary"]
+    assert [event.event for event in events.events] == [
+        "vp_propose",
+        "response_error",
+        "vp_revise",
+        "vp_critique",
+    ]
+
+
+@pytest.mark.parametrize("reason", [None, "", " \n\t ", "I", " " * 50])
+def test_missing_or_blank_critique_rationale_never_authorizes_payment(reason):
+    c, r = setup()
+    invalid = {"verdict": "accept"}
+    if reason is not None:
+        invalid["reason_summary"] = reason
+    result = review(c, r, Script([proposal(), invalid] * 3), Policy(), Events())
+    assert not result.accepted
+    assert result.semantic_calls == 6
+    assert result.error.code == ErrorCode.LLM_SCHEMA_ERROR
+
+
+def test_trace_preserves_rationales_checks_and_separates_feedback_from_safeguards():
+    c, r = setup("12000.00")
+    events = Events()
+    checks = {"arithmetic": "The reported total matches the line amounts."}
+    draft = proposal(checks=checks, high_value_review=True)
+    feedback = {
+        "verdict": "revise",
+        "reason_summary": "Stock and completeness assessments are missing from this proposal.",
+        "issues": ["The proposal does not explain available stock."],
+        "required_changes": ["Add a stock assessment."],
+    }
+    result = review(c, r, Script([draft, feedback] * 3), Policy(), events)
+    assert not result.accepted
+    initial, critique = events.events[:2]
+    assert initial.payload["reason"] == draft["reason_summary"]
+    assert initial.payload["checks"] == checks
+    assert initial.payload["finding_codes"] == []
+    assert initial.payload["evidence_refs"] == []
+    assert initial.payload["high_value_review"] is True
+    assert critique.payload["reason"] == feedback["reason_summary"]
+    assert critique.payload["agent_issues"] == feedback["issues"]
+    assert critique.payload["required_changes"] == feedback["required_changes"]
+    assert critique.payload["deterministic_issues"]
+    assert not set(feedback["issues"]) & set(critique.payload["deterministic_issues"])
+    assert critique.payload["accepted"] is False
+
+
+def test_accept_verdict_with_safeguard_failure_records_effective_rejection():
+    c, r = setup("12000.00")
+    events = Events()
+    result = review(c, r, Script([proposal(), ACCEPT] * 3), Policy(), events)
+    assert not result.accepted
+    critique = events.events[1].payload
+    assert critique["verdict"] == "accept"
+    assert critique["accepted"] is False
+    assert critique["agent_issues"] == []
+    assert critique["deterministic_issues"]
