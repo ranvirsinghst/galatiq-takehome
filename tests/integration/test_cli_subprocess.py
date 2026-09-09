@@ -108,30 +108,34 @@ def test_whole_cli_process_through_http_and_committed_ledger(tmp_path):
         server.server_close()
         thread.join(timeout=5)
     assert result.returncode == 0, result.stderr
+    assert "Rejected by deterministic rules; VP review skipped" in result.stderr
     rows = [json.loads(line) for line in result.stdout.splitlines()]
     assert [r["identity"]["invoice_number"] for r in rows[:-1]] == ["INV-1", "INV-2"]
     assert rows[-1]["new_payments"] == 1 and rows[-1]["rejected"] == 1
     assert rows[-1]["final_inventory"]["WidgetA"] == 5
-    assert len(paths_seen) == 6 and set(paths_seen) == {"/v1/chat/completions"}
+    assert len(paths_seen) == 4 and set(paths_seen) == {"/v1/chat/completions"}
     run_dir = next((tmp_path / "runs").iterdir())
     with sqlite3.connect(run_dir / "inventory.db") as db:
         assert db.execute("SELECT count(*) FROM payments").fetchone()[0] == 1
     audits = [json.loads(line) for line in (run_dir / "audit.jsonl").read_text().splitlines()]
-    assert all(a["validation"] and a["review"] for a in audits)
+    assert all(a["validation"] for a in audits)
+    assert audits[0]["review"]["accepted"]
+    assert audits[1].get("review") is None
+    assert audits[1]["attempts"]["vp_calls"] == 0
     assert "local-http-test-sentinel" not in result.stdout + result.stderr
 
     assert all("trace" not in row for row in rows)
     assert "Trace:" not in result.stdout + result.stderr
     traces = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
     usage = [e for e in traces if e["event"] == "model_usage"]
-    assert len(usage) == 6
+    assert len(usage) == 4
     assert usage[0]["payload"]["usage"]["prompt_tokens"] == 100
     metrics = json.loads((run_dir / "metrics.json").read_text())
     assert metrics == rows[-1]["metrics"]
-    assert metrics["prompt_tokens"] == 600 and metrics["completion_tokens"] == 120
-    assert metrics["total_tokens"] == 720 and metrics["cached_prompt_tokens"] == 180
-    assert metrics["model_calls"] == metrics["transport_attempts"] == 6
-    assert metrics["estimated_api_cost_usd"] == "0.000030"
+    assert metrics["prompt_tokens"] == 400 and metrics["completion_tokens"] == 80
+    assert metrics["total_tokens"] == 480 and metrics["cached_prompt_tokens"] == 120
+    assert metrics["model_calls"] == metrics["transport_attempts"] == 4
+    assert metrics["estimated_api_cost_usd"] == "0.000020"
     assert metrics["cost_complete"] and metrics["usage_complete"]
     assert metrics["operational_error_rate"] == 0 and metrics["rejection_rate"] == 0.5
     assert metrics["blocked_payment_exposure_usd"] == "80.00"

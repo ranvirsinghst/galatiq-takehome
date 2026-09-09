@@ -38,6 +38,7 @@ class ProcessingState(TypedDict, total=False):
     result: InvoiceResult
     report: ValidationReport
     reviewed: ReviewOutcome
+    tool_rounds: int
 
 
 def process_invoice(
@@ -118,12 +119,16 @@ def process_invoice(
         if outcome.error:
             return {"result": error(outcome.error, attempts={"tool_rounds": outcome.tool_rounds})}
         assert outcome.report is not None
-        return {"report": outcome.report}
+        return {"report": outcome.report, "tool_rounds": outcome.tool_rounds}
 
     def vp(state: ProcessingState) -> dict[str, Any]:
         report = state["report"]
         outcome = review(candidate, report, llm, policy, events)
-        attempts = {"vp_calls": outcome.semantic_calls, "vp_revisions": outcome.revision_count}
+        attempts = {
+            "tool_rounds": state.get("tool_rounds", 0),
+            "vp_calls": outcome.semantic_calls,
+            "vp_revisions": outcome.revision_count,
+        }
         if outcome.error:
             return {
                 "reviewed": outcome,
@@ -185,6 +190,7 @@ def process_invoice(
                 findings=report.findings,
                 payment=outcome,
                 attempts={
+                    "tool_rounds": state.get("tool_rounds", 0),
                     "vp_calls": reviewed.semantic_calls,
                     "vp_revisions": reviewed.revision_count,
                 },
@@ -203,17 +209,52 @@ def process_invoice(
 
         return invoke
 
+    def combined_review(state: ProcessingState) -> dict[str, Any]:
+        validated = timed("validation", validation)(state)
+        if "result" in validated:
+            return validated
+        report = validated["report"]
+        findings = list(report.findings)
+        if not report.complete:
+            findings.append(
+                ValidationFinding(
+                    code="VALIDATION_INCOMPLETE",
+                    severity=Severity.BLOCKER,
+                    message="Payment blocked because deterministic validation is incomplete.",
+                )
+            )
+        blockers = [finding for finding in findings if finding.severity == Severity.BLOCKER]
+        if blockers:
+            events.record(
+                "review",
+                "review_rejected_by_rules",
+                codes=[finding.code for finding in blockers],
+                vp_skipped="Deterministic blockers make this invoice ineligible for payment.",
+            )
+            return {
+                **validated,
+                "result": rejected(
+                    [finding.message for finding in blockers],
+                    findings,
+                    attempts={
+                        "tool_rounds": validated["tool_rounds"],
+                        "vp_calls": 0,
+                        "vp_revisions": 0,
+                    },
+                ),
+            }
+        review_state: ProcessingState = {**state, **validated}
+        return {**validated, **timed("approval", vp)(review_state)}
+
     graph = StateGraph(ProcessingState)
     for name, node in (
         ("identity", identity_check),
-        ("validate", timed("validation", validation)),
-        ("review", timed("approval", vp)),
+        ("review", combined_review),
         ("pay", timed("payment", payment)),
     ):
         graph.add_node(name, node)
     graph.add_edge(START, "identity")
-    graph.add_conditional_edges("identity", lambda s: END if s.get("result") else "validate")
-    graph.add_conditional_edges("validate", lambda s: END if s.get("result") else "review")
+    graph.add_conditional_edges("identity", lambda s: END if s.get("result") else "review")
     graph.add_conditional_edges("review", lambda s: END if s.get("result") else "pay")
     graph.add_edge("pay", END)
     try:

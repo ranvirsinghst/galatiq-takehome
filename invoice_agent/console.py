@@ -97,6 +97,8 @@ class ConsoleReporter:
                 "vp_critique": "Checking VP decision",
                 "vp_revise": "VP revising decision",
             }.get(event.stage)
+        elif event.event == "review_rejected_by_rules":
+            message = "Rejected by deterministic rules; VP review skipped"
         elif event.event == "extraction_repair_required":
             message = "Extraction needs correction; checking source evidence"
         elif event.event == "transport_retry":

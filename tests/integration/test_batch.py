@@ -77,13 +77,16 @@ def test_malformed_input_does_not_suppress_healthy_file(tmp_path):
     assert result.summary.operational_errors == 0
 
 
-def test_hostile_approval_and_critique_never_pay_blocker(tmp_path):
+def test_deterministic_blocker_skips_hostile_vp(tmp_path):
     bad = invoice(tmp_path / "bad.json", "INV-1", "2026-01-01", 20)
     result = execute([bad], tmp_path, llm=ScenarioLLM(hostile=True))
     assert result.summary.new_payments == 0
     assert result.summary.final_inventory["WidgetA"] == 15
     assert result.results[0].decision == "rejected"
-    assert "REVIEW_EXHAUSTED" in result.results[0].reasons[0]
+    assert any(f.code == "INSUFFICIENT_STOCK" for f in result.results[0].findings)
+    assert result.results[0].review is None
+    assert result.results[0].attempts["vp_calls"] == 0
+    assert not any(e.event in {"vp_propose", "vp_critique", "vp_revise"} for e in result.trace)
 
 
 def test_discovery_and_empty_directory(tmp_path):
