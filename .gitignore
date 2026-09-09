@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env_example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+*.sqlite
+outputs/
+runs/
+.DS_Store
+dist/
+*.egg-info/
+
+# Generated BMAD render snapshots contain machine-specific absolute paths.
+_bmad/render/
+_bmad/custom/*.user.toml
+_bmad/config.user.toml

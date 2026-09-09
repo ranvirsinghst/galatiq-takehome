@@ -1,0 +1,22 @@
+{
+  "invoice_1001.txt": {"decision": "approved", "total_usd": "5000.00", "codes": []},
+  "invoice_1002.txt": {"decision": "rejected", "total_usd": "15000.00", "codes": ["INSUFFICIENT_STOCK", "TERMS_DATE_MISMATCH"]},
+  "invoice_1003.txt": {"decision": "rejected", "total_usd": "100000.00", "codes": ["OUT_OF_STOCK", "INVALID_DATE"]},
+  "invoice_1004.json": {"decision": "approved", "total_usd": "1890.00", "codes": []},
+  "invoice_1004_revised.json": {"decision": "approved", "total_usd": "5940.00", "codes": []},
+  "invoice_1005.json": {"decision": "rejected", "total_usd": "15225.00", "codes": ["INSUFFICIENT_STOCK"]},
+  "invoice_1006.csv": {"decision": "approved", "total_usd": "2750.00", "codes": []},
+  "invoice_1007.csv": {"decision": "rejected", "total_usd": "15525.00", "codes": ["INSUFFICIENT_STOCK"]},
+  "invoice_1008.txt": {"decision": "rejected", "total_usd": "9900.00", "codes": ["UNKNOWN_ITEM"]},
+  "invoice_1009.json": {"decision": "rejected", "total_usd": "-250.00", "codes": ["INVALID_QUANTITY", "MISSING_REQUIRED_FIELD", "INVALID_AMOUNT"]},
+  "invoice_1010.txt": {"decision": "rejected", "total_usd": "7185.00", "codes": ["PRICE_OVERCHARGE"]},
+  "invoice_1011.txt": {"decision": "approved", "total_usd": "3000.00", "codes": []},
+  "invoice_1011.pdf": {"decision": "approved", "total_usd": "3000.00", "codes": []},
+  "invoice_1012.txt": {"decision": "approved", "total_usd": "9975.00", "codes": []},
+  "invoice_1012.pdf": {"decision": "approved", "total_usd": "9975.00", "codes": []},
+  "invoice_1013.json": {"decision": "rejected", "total_usd": "22562.80", "codes": ["INSUFFICIENT_STOCK", "TOTAL_MISMATCH"]},
+  "invoice_1013.pdf": {"decision": "rejected", "total_usd": "22562.80", "codes": ["INSUFFICIENT_STOCK", "TOTAL_MISMATCH"]},
+  "invoice_1014.xml": {"decision": "approved", "total_usd": "4537.50", "codes": []},
+  "invoice_1015.csv": {"decision": "approved", "total_usd": "6500.00", "codes": []},
+  "invoice_1016.json": {"decision": "rejected", "total_usd": "3233.00", "codes": ["UNKNOWN_ITEM"]}
+}
