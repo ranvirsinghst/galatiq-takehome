@@ -22,7 +22,7 @@ uv run python main.py --invoice_path=data/invoices/invoice_1001.txt
 uv run python main.py --invoice_path=data/invoices --open-report
 ```
 
-Keep `.env` local. The default model is `grok-4.3`, as configured in [.env_example](.env_example); set `XAI_MODEL` to change it.
+Keep `.env` local. The default model is `grok-4.6`, as configured in [.env_example](.env_example); set `XAI_MODEL` to change it.
 
 ## Runtime
 
