@@ -45,3 +45,9 @@ def test_interruption_preserves_committed_outcome_and_audit(tmp_path, monkeypatc
     with sqlite3.connect(run_dir / "inventory.db") as db:
         assert db.execute("SELECT count(*) FROM payments").fetchone()[0] == 1
     assert not any(json.loads(line)["type"] == "summary" for line in captured.out.splitlines())
+
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert not metrics["run_complete"] and metrics["run_error"]
+    traces = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
+    assert traces and traces[-1]["source_id"] == "source-0002"
+    assert "test-only-placeholder" not in (run_dir / "trace.jsonl").read_text()

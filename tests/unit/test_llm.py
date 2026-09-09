@@ -192,7 +192,7 @@ def test_observable_retry_and_elapsed_duration():
             return httpx.Response(429, headers={"retry-after": "invalid"})
         return httpx.Response(200, json=envelope())
 
-    ticks = iter([10.0, 10.5])
+    ticks = iter([10.0, 10.5, 10.5])
     client = XAIClient(
         "key",
         transport=httpx.MockTransport(handler),
@@ -203,10 +203,13 @@ def test_observable_retry_and_elapsed_duration():
     )
     client.complete(request())
     assert [event.event for event in events] == [
+        "model_client_initialized",
         "model_request",
         "transport_retry",
         "model_request",
+        "model_usage",
         "model_response",
+        "model_call_finished",
     ]
     assert events[-1].payload["elapsed_ms"] == 500
     client.close()
@@ -232,3 +235,60 @@ def test_wrong_envelope_types_return_typed_schema_error(body):
         client.complete(request())
     assert error.value.code == ErrorCode.LLM_SCHEMA_ERROR
     client.close()
+
+
+def test_usage_survives_schema_failure_and_secret_redaction():
+    from invoice_agent.output import EventCollector
+
+    events = EventCollector("r")
+    body = envelope("not JSON")
+    body["usage"] = {
+        "prompt_tokens": 100,
+        "completion_tokens": 20,
+        "total_tokens": 120,
+        "prompt_tokens_details": {"cached_tokens": 30},
+        "completion_tokens_details": {"reasoning_tokens": 5},
+        "cost_in_usd_ticks": 50000,
+        "access_token": "never-emit-this",
+    }
+    client = XAIClient(
+        "test",
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body)),
+        events=events,
+    )
+    try:
+        with pytest.raises(LLMError):
+            client.complete(request())
+    finally:
+        client.close()
+    usage = next(e.payload["usage"] for e in events.events if e.event == "model_usage")
+    assert usage == {
+        "prompt_tokens": 100,
+        "completion_tokens": 20,
+        "total_tokens": 120,
+        "cached_prompt_tokens": 30,
+        "reasoning_tokens": 5,
+        "cost_in_usd_ticks": 50000,
+    }
+    assert events.events[-1].event == "model_call_finished"
+    assert events.events[-1].payload["status"] == "error"
+    assert events.events[-1].payload["elapsed_ms"] >= 0
+    assert "never-emit-this" not in str(events.events)
+
+
+@pytest.mark.parametrize("output,total,expected", [(9, 135, 103), (103, 135, 103)])
+def test_reasoning_usage_normalizes_chat_and_responses_without_double_count(
+    output, total, expected
+):
+    from invoice_agent.llm import collect_usage
+
+    usage = collect_usage(
+        {
+            "prompt_tokens": 32,
+            "completion_tokens": output,
+            "total_tokens": total,
+            "completion_tokens_details": {"reasoning_tokens": 94},
+        }
+    )
+    assert usage["completion_tokens"] == expected
+    assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]

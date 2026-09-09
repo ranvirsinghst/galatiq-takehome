@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from invoice_agent.console import ConsoleReporter, clean_terminal
 from invoice_agent.database import SQLitePaymentStore
 from invoice_agent.errors import AgentError
 from invoice_agent.llm import XAIClient
+from invoice_agent.metrics import RunMetrics, compute_metrics
 from invoice_agent.models import InvoiceResult
 from invoice_agent.output import EventCollector, write_invoice, write_summary
 from invoice_agent.runner import RunDependencies, discover, run
@@ -29,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--trace",
         action="store_true",
-        help="Show live diagnostic details; include structured events in artifacts",
+        help="Include structured events in result artifacts; detailed trace is always saved per run",
     )
     parser.add_argument(
         "--output_dir",
@@ -68,12 +70,28 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = args.output_dir / run_id
     store = None
     client = None
+    trace_file = None
+    events = None
+    recorded: list[InvoiceResult] = []
+    metrics_saved = False
+
+    def save_metrics(metrics: RunMetrics) -> None:
+        temporary = run_dir / "metrics.json.tmp"
+        with temporary.open("w", encoding="utf-8") as stream:
+            stream.write(metrics.model_dump_json(indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(run_dir / "metrics.json")
+
     try:
         run_dir.mkdir(parents=True)
         key = settings.api_key.get_secret_value()
         diagnostic_secrets.append(key)
-        console = ConsoleReporter(paths, sys.stderr, trace=args.trace, secrets=[key])
-        events = EventCollector(run_id, secrets=[key], on_event=console.event)
+        console = ConsoleReporter(paths, sys.stderr, secrets=[key])
+        trace_file = (run_dir / "trace.jsonl").open("w", encoding="utf-8")
+        events = EventCollector(
+            run_id, secrets=[key], on_event=console.event, trace_stream=trace_file
+        )
         policy = Policy(request_timeout_seconds=settings.timeout_seconds)
         store = SQLitePaymentStore(run_dir / "inventory.db", run_id, policy=policy, events=events)
         client = XAIClient(
@@ -92,23 +110,27 @@ def main(argv: list[str] | None = None) -> int:
         ):
 
             def persist(item: InvoiceResult) -> None:
+                recorded.append(item)
                 audit.write(item.model_dump_json(exclude_none=True) + "\n")
                 audit.flush()
                 os.fsync(audit.fileno())
                 write_invoice(item, artifact, trace=args.trace)
                 os.fsync(artifact.fileno())
                 if args.json:
-                    write_invoice(item, sys.stdout, trace=args.trace)
+                    write_invoice(item, sys.stdout)
                 else:
                     console.invoice(item, sys.stdout)
 
             result = run(
                 paths, RunDependencies(store, client, events, policy, on_result=persist), skipped
             )
+            assert result.summary.metrics is not None
+            save_metrics(result.summary.metrics)
             write_summary(result, artifact, trace=args.trace)
             os.fsync(artifact.fileno())
+            metrics_saved = True
             if args.json:
-                write_summary(result, sys.stdout, trace=args.trace)
+                write_summary(result, sys.stdout)
             else:
                 console.summary(result, sys.stdout)
         return 1 if result.summary.operational_errors or result.summary.error else 0
@@ -124,16 +146,52 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, AgentError):
         diagnostic(
             "RUN_FAILED",
-            f"Run could not complete; partial results and any committed payments remain in {run_dir}. No complete success summary emitted. Check storage and provider configuration.",
+            (
+                f"Processing completed; saved summary and metrics in {run_dir}; terminal reporting failed."
+                if metrics_saved
+                else f"Run could not complete; partial results and any committed payments remain in {run_dir}. No complete success summary emitted. Check storage and provider configuration."
+            ),
         )
         return 1
     except Exception as exc:
         diagnostic(
             "INTERNAL_ERROR",
-            f"Unexpected run failure ({type(exc).__name__}); partial results and any committed payments remain in {run_dir}. No complete success summary emitted.",
+            (
+                f"Processing completed; saved summary and metrics in {run_dir}; terminal reporting failed ({type(exc).__name__})."
+                if metrics_saved
+                else f"Unexpected run failure ({type(exc).__name__}); partial results and any committed payments remain in {run_dir}. No complete success summary emitted."
+            ),
         )
         return 1
     finally:
+        if events is not None and not metrics_saved:
+            partial = compute_metrics(
+                recorded,
+                events.events,
+                len(paths),
+                (time.monotonic() - events.start) * 1000,
+                run_complete=False,
+                run_error=True,
+            )
+            try:
+                save_metrics(partial)
+                print(
+                    clean_terminal(
+                        f"Partial run metrics saved: {run_dir / 'metrics.json'}; "
+                        f"estimated token spend: {partial.estimated_api_cost_usd if partial.estimated_api_cost_usd is not None else 'unavailable'} USD; "
+                        f"potential loss avoided (blocked exposure): {partial.blocked_payment_exposure_usd:.2f} USD, not realized savings",
+                        diagnostic_secrets,
+                    ),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except OSError:
+                pass  # Existing failure diagnostic remains authoritative when storage is unavailable.
+        if trace_file is not None:
+            try:
+                trace_file.close()
+            except OSError:
+                pass  # Trace persistence already reported as a run error by the collector.
         if client:
             client.close()
         if store:

@@ -68,9 +68,11 @@ invoice_1001.txt: PAID (mock) — $5,000.00 USD
 
 Use `--json` for JSONL stdout (one invoice result plus a final summary); progress remains on stderr, so `--json > results.jsonl` is safe for scripts. Business rejection exits 0; operational failure exits 1; invalid input/configuration exits 2.
 
-`--trace` adds readable live diagnostics such as model response timing and tool/review details. It also includes source-linked structured events in JSON artifacts and in stdout when combined with `--json`. It does not expose hidden chain-of-thought or credentials. Ordinary rejection reasons remain visible without trace.
+Detailed events are saved continuously to `runs/<run_id>/trace.jsonl`, including model timing, token usage, inventory tools, corrections, and VP critique. They are never printed to the terminal, even with `--trace --json`. `--trace` additionally embeds events in `results.jsonl`; ordinary progress and rejection reasons remain visible without it. Credentials and hidden model reasoning are not logged.
 
-Each invocation writes `runs/<run_id>/inventory.db`, `results.jsonl`, and `audit.jsonl`; use `--output_dir` to select a different root. Completed outcomes are flushed incrementally, so interruption preserves earlier results. The audit file retains source hashes, exact normalized candidates, source amounts/evidence, validation reports, and bound VP decisions. The run directory is printed before processing so a partial run can be reconciled against its ledger. These are ignored local artifacts, not shared state for future runs. A failed final inventory read is reported as unavailable, not fabricated as the seed balance.
+Every completed run ends with a compact invoice table and metrics: estimated API spend, potential loss avoided (blocked payment exposure, **not realized savings**), token counts, overall/per-agent latency, and processing error rate. `metrics.json` stores the same numbers; `--json` includes them in its final summary. Interrupted runs retain the trace and save explicitly partial metrics when storage is writable. See [metric definitions and pricing](docs/metrics.md).
+
+Each invocation writes `runs/<run_id>/inventory.db`, `results.jsonl`, `audit.jsonl`, `trace.jsonl`, and `metrics.json`; use `--output_dir` to select a different root. Completed outcomes are flushed incrementally, so interruption preserves earlier results. The audit file retains source hashes, exact normalized candidates, source amounts/evidence, validation reports, and bound VP decisions. The run directory is printed before processing so a partial run can be reconciled against its ledger. These are ignored local artifacts, not shared state for future runs. A failed final inventory read is reported as unavailable, not fabricated as the seed balance.
 
 ## Verification
 
@@ -93,7 +95,7 @@ uv run python scripts/evaluate.py --live
 uv run python main.py --invoice_path=data/invoices --trace
 ```
 
-A skipped live check is not proof of provider compatibility. See [build status and evidence](docs/build/status.md) for actual results, pending credentials, and independent review findings.
+A skipped live check is not proof of provider compatibility. See [build status and evidence](docs/build/status.md) for actual results and independent review findings.
 
 ## Scope and limitations
 

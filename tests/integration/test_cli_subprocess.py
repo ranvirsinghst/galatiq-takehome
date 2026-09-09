@@ -48,6 +48,14 @@ def test_whole_cli_process_through_http_and_committed_ledger(tmp_path):
             body = json.dumps(
                 {
                     "model": "local-provider-double",
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 20,
+                        "total_tokens": 120,
+                        "prompt_tokens_details": {"cached_tokens": 30},
+                        "completion_tokens_details": {"reasoning_tokens": 2},
+                        "cost_in_usd_ticks": 50000,
+                    },
                     "choices": [
                         {
                             "finish_reason": "tool_calls" if response.tool_calls else "stop",
@@ -111,3 +119,22 @@ def test_whole_cli_process_through_http_and_committed_ledger(tmp_path):
     audits = [json.loads(line) for line in (run_dir / "audit.jsonl").read_text().splitlines()]
     assert all(a["validation"] and a["review"] for a in audits)
     assert "local-http-test-sentinel" not in result.stdout + result.stderr
+
+    assert all("trace" not in row for row in rows)
+    assert "Trace:" not in result.stdout + result.stderr
+    traces = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
+    usage = [e for e in traces if e["event"] == "model_usage"]
+    assert len(usage) == 6
+    assert usage[0]["payload"]["usage"]["prompt_tokens"] == 100
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert metrics == rows[-1]["metrics"]
+    assert metrics["prompt_tokens"] == 600 and metrics["completion_tokens"] == 120
+    assert metrics["total_tokens"] == 720 and metrics["cached_prompt_tokens"] == 180
+    assert metrics["model_calls"] == metrics["transport_attempts"] == 6
+    assert metrics["estimated_api_cost_usd"] == "0.000030"
+    assert metrics["cost_complete"] and metrics["usage_complete"]
+    assert metrics["operational_error_rate"] == 0 and metrics["rejection_rate"] == 0.5
+    assert metrics["blocked_payment_exposure_usd"] == "80.00"
+    assert set(metrics["agent_latency_ms"]) == {"ingestion", "validation", "approval", "payment"}
+    assert set(metrics["model_latency_ms"]) == {"inventory", "vp_propose", "vp_critique"}
+    assert metrics["wall_ms"] >= sum(metrics["agent_latency_ms"].values())

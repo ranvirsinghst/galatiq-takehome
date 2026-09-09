@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .metrics import RunMetrics
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
@@ -360,6 +362,14 @@ class LLMResponse(Contract):
     transport_retries: int = 0
 
 
+_USAGE_COUNTS = {
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cached_prompt_tokens",
+    "reasoning_tokens",
+}
+
 _SECRET = re.compile(r"(?i)(?:sk-[a-z0-9_-]{8,}|(?:bearer\s+)[a-z0-9_.-]+)")
 
 
@@ -368,7 +378,9 @@ def redact(value: Any) -> Any:
         return _SECRET.sub("[REDACTED]", value)[:2000]
     if isinstance(value, dict):
         return {
-            str(k): "[REDACTED]"
+            str(k): v
+            if k in _USAGE_COUNTS and type(v) is int and v >= 0
+            else "[REDACTED]"
             if any(s in str(k).lower() for s in ("key", "secret", "authorization", "token"))
             else redact(v)
             for k, v in value.items()
@@ -436,6 +448,7 @@ class InvoiceResult(Contract):
 
 
 class RunSummary(Contract):
+    metrics: RunMetrics | None = None
     run_id: str
     error: ErrorInfo | None = None
     discovered: int = 0

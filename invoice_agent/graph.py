@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -189,12 +191,24 @@ def process_invoice(
             )
         }
 
+    def timed(stage: str, node: Callable[[ProcessingState], dict[str, Any]]):
+        def invoke(state: ProcessingState) -> dict[str, Any]:
+            start = time.monotonic()
+            try:
+                return node(state)
+            finally:
+                events.record(
+                    stage, "agent_stage_finished", elapsed_ms=(time.monotonic() - start) * 1000
+                )
+
+        return invoke
+
     graph = StateGraph(ProcessingState)
     for name, node in (
         ("identity", identity_check),
-        ("validate", validation),
-        ("review", vp),
-        ("pay", payment),
+        ("validate", timed("validation", validation)),
+        ("review", timed("approval", vp)),
+        ("pay", timed("payment", payment)),
     ):
         graph.add_node(name, node)
     graph.add_edge(START, "identity")

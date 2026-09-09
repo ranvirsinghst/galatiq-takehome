@@ -53,10 +53,29 @@ class XAIClient:
             headers={"Authorization": f"Bearer {api_key}"},
         )
 
+        self._event("provider", "model_client_initialized", {"model": self.model})
+
     def close(self) -> None:
         self.client.close()
 
     def complete(self, request: LLMRequest) -> LLMResponse:
+        start = self.clock()
+        status = "error"
+        try:
+            result = self._complete(request, start)
+            status = "success"
+            return result
+        finally:
+            self._event(
+                request.phase,
+                "model_call_finished",
+                {
+                    "status": status,
+                    "elapsed_ms": round((self.clock() - start) * 1000, 2),
+                },
+            )
+
+    def _complete(self, request: LLMRequest, start: float) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": request.messages,
@@ -75,7 +94,6 @@ class XAIClient:
                     "strict": True,
                 },
             }
-        start = self.clock()
         response: httpx.Response | None = None
         for attempt in range(self.retries + 1):
             retry_after = 0.0
@@ -121,6 +139,18 @@ class XAIClient:
             body = response.json()
             if not isinstance(body, dict):
                 raise ValueError("Response body must be an object")
+            usage = collect_usage(body.get("usage"))
+            self._event(
+                request.phase,
+                "model_usage",
+                {
+                    "model": self.model,
+                    "resolved_model": body.get("model"),
+                    "usage": usage,
+                },
+            )
+            if body.get("usage") is not None and not isinstance(body["usage"], dict):
+                raise ValueError("Usage must be an object")
             choices = body["choices"]
             if not isinstance(choices, list) or len(choices) != 1:
                 raise ValueError("Expected one response")
@@ -164,16 +194,11 @@ class XAIClient:
                     jsonschema.validate(content, request.output_schema)
             elif not request.tools:
                 raise ValueError("Unexpected tool response")
-            usage = body.get("usage")
-            if usage is None:
-                usage = {}
-            if not isinstance(usage, dict):
-                raise ValueError("Usage must be an object")
             result = LLMResponse(
                 content=content,
                 tool_calls=calls,
                 finish_reason=finish,
-                usage={k: v for k, v in usage.items() if isinstance(v, int)},
+                usage=usage,
                 provider_request_id=body.get("id"),
                 transport_retries=attempt,
             )
@@ -209,3 +234,54 @@ class XAIClient:
             self.events.emit(
                 TraceEvent(run_id=self.run_id, stage=phase, event=event, payload=payload)
             )
+
+
+def collect_usage(raw: Any) -> dict[str, int]:
+    """Keep only known numeric accounting fields; never log arbitrary provider metadata."""
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, int] = {}
+    for target, aliases in {
+        "prompt_tokens": ("prompt_tokens", "input_tokens"),
+        "completion_tokens": ("completion_tokens", "output_tokens"),
+        "total_tokens": ("total_tokens",),
+        "cached_prompt_tokens": ("cached_prompt_tokens",),
+        "reasoning_tokens": ("reasoning_tokens",),
+        "cost_in_usd_ticks": ("cost_in_usd_ticks",),
+    }.items():
+        for alias in aliases:
+            value = raw.get(alias)
+            if type(value) is int and value >= 0:
+                result[target] = value
+                break
+    for target, containers, key in (
+        (
+            "cached_prompt_tokens",
+            ("prompt_tokens_details", "input_tokens_details"),
+            "cached_tokens",
+        ),
+        (
+            "reasoning_tokens",
+            ("completion_tokens_details", "output_tokens_details"),
+            "reasoning_tokens",
+        ),
+    ):
+        for container in containers:
+            details = raw.get(container)
+            value = details.get(key) if isinstance(details, dict) else None
+            if type(value) is int and value >= 0 and target not in result:
+                result[target] = value
+    prompt = result.get("prompt_tokens")
+    output = result.get("completion_tokens")
+    total = result.get("total_tokens")
+    reasoning = result.get("reasoning_tokens", 0)
+    # Chat Completions may report reasoning separately; normalize billed output.
+    if (
+        prompt is not None
+        and output is not None
+        and total is not None
+        and reasoning > 0
+        and total == prompt + output + reasoning
+    ):
+        result["completion_tokens"] = output + reasoning
+    return result
