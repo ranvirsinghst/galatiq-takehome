@@ -18,7 +18,7 @@ uv run python main.py --invoice_path=data/invoices/invoice_1001.txt
 uv run python main.py --invoice_path=data/invoices --open-report
 ```
 
-Keep `.env` local. The default model is `grok-4.6`; set `XAI_MODEL` to change it.
+Keep `.env` local. The default model is `grok-4.3`, as configured in [.env_example](.env_example); set `XAI_MODEL` to change it.
 
 ## How it works
 
@@ -57,9 +57,9 @@ RUN_LIVE_XAI=1 uv run pytest tests/live -q
 
 ### Agent organization
 
-- **Decision:** Only two agents: ingestion, inventory validation, and VP approval. Validation and VP approval are folded into one review node. The VP critiques its own proposal in a separate call.
-- **Rationale:** Extraction and payment should live in separate nodes. Violations of deterministic rules should be instantly rejected to not waste time on VP review. Validation and approval as one node avoids playing a game of context telephone. A single context window holds all necessary information and perspective to handle approval/rejection.
-- **Tradeoffs:** One node still makes several model calls. The critique phase adds latency, and the same model might repeat mistakes.
+- **Decision:** Ingest invoices first, then use separate graph nodes for identity checks, tool-backed validation, VP review, and payment. The VP critiques its own proposal in a separate call.
+- **Rationale:** Pass structured invoice and validation data between stages. Deterministic blockers stop processing before VP review, and payment independently checks the approval evidence.
+- **Tradeoffs:** Processing can require several model calls. The critique phase adds latency, and the same model might repeat mistakes.
 
 ### Deterministic payment checks
 
@@ -87,7 +87,7 @@ RUN_LIVE_XAI=1 uv run pytest tests/live -q
 
 ## Further reading
 
-- [Original assignment](docs/assignment.md)
-- [Architecture and module specs](docs/specs/spec-invoice-agent/SPEC.md)
-- [Existing decision log](docs/decisions/README.md)
-- [Live examples](docs/live-examples.md) · [Metric definitions](docs/metrics.md) · [Build and verification evidence](docs/build/status.md)
+- [Processing workflow](invoice_agent/graph.py) and [VP review](invoice_agent/approval.py)
+- [Validation rules](invoice_agent/validation.py) and [payment persistence](invoice_agent/database.py)
+- [Metric calculations](invoice_agent/metrics.py)
+- [Fixture evaluator](scripts/evaluate.py) and [automated checks](.github/workflows/ci.yml)
