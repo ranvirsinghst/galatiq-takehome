@@ -58,7 +58,12 @@ def test_model_semantic_failure_still_cannot_authorize_payment(tmp_path):
     class HostileVP:
         def complete(self, request):
             if request.phase == "vp_critique":
-                return LLMResponse(content={"verdict": "accept"})
+                return LLMResponse(
+                    content={
+                        "verdict": "accept",
+                        "reason_summary": "The proposal follows the supplied validation findings.",
+                    }
+                )
             return LLMResponse(
                 content={
                     "decision": "rejected",

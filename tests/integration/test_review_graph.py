@@ -18,7 +18,12 @@ class EvidenceVP:
 
         facts = json.loads(request.messages[-1]["content"])
         if request.phase == "vp_critique":
-            return LLMResponse(content={"verdict": "accept"})
+            return LLMResponse(
+                content={
+                    "verdict": "accept",
+                    "reason_summary": "The proposal follows the supplied validation findings.",
+                }
+            )
         findings = facts["validation"]["findings"]
         blocked = any(f["severity"] == "blocker" for f in findings)
         return LLMResponse(

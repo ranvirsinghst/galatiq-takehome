@@ -8,6 +8,8 @@ import os
 import sys
 import time
 import uuid
+import webbrowser
+from decimal import Decimal
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -18,8 +20,9 @@ from invoice_agent.database import SQLitePaymentStore
 from invoice_agent.errors import AgentError
 from invoice_agent.llm import XAIClient
 from invoice_agent.metrics import RunMetrics, compute_metrics
-from invoice_agent.models import InvoiceResult
+from invoice_agent.models import InvoiceResult, RunResult, RunSummary
 from invoice_agent.output import EventCollector, write_invoice, write_summary
+from invoice_agent.report import write_report
 from invoice_agent.runner import RunDependencies, discover, run
 
 
@@ -41,6 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--json", action="store_true", help="Write JSONL results to stdout for scripts"
+    )
+    parser.add_argument(
+        "--open-report",
+        action="store_true",
+        help="Open report.html in the default browser after the run",
     )
     args = parser.parse_args(argv)
 
@@ -72,6 +80,34 @@ def main(argv: list[str] | None = None) -> int:
     events = None
     recorded: list[InvoiceResult] = []
     metrics_saved = False
+
+    report_failed = False
+
+    def save_html(result: RunResult) -> None:
+        nonlocal report_failed
+        path = run_dir / "report.html"
+        try:
+            write_report(result, path, secrets=diagnostic_secrets)
+        except Exception:
+            report_failed = True
+            diagnostic(
+                "REPORT_FAILED",
+                f"Report could not be saved; results are in {run_dir}.",
+            )
+            return
+        print(
+            clean_terminal(f"Full report: {path}", diagnostic_secrets), file=sys.stderr, flush=True
+        )
+        if args.open_report:
+            try:
+                opened = webbrowser.open(path.resolve().as_uri())
+            except Exception:
+                opened = False
+            if not opened:
+                diagnostic(
+                    "REPORT_OPEN_FAILED",
+                    f"Browser could not open the report; open {path} manually.",
+                )
 
     def save_metrics(metrics: RunMetrics) -> None:
         temporary = run_dir / "metrics.json.tmp"
@@ -127,11 +163,14 @@ def main(argv: list[str] | None = None) -> int:
             write_summary(result, artifact, trace=args.trace)
             os.fsync(artifact.fileno())
             metrics_saved = True
+            save_html(result)
             if args.json:
                 write_summary(result, sys.stdout)
             else:
                 console.summary(result, sys.stdout)
-        return 1 if result.summary.operational_errors or result.summary.error else 0
+        return (
+            1 if result.summary.operational_errors or result.summary.error or report_failed else 0
+        )
     except KeyboardInterrupt:
         print(
             clean_terminal(
@@ -182,7 +221,34 @@ def main(argv: list[str] | None = None) -> int:
                     flush=True,
                 )
             except OSError:
-                pass  # Existing failure diagnostic remains authoritative when storage is unavailable.
+                pass  # HTML can still be writable when only metrics persistence fails.
+            try:
+                paid = [r for r in recorded if r.payment.status == "paid"]
+                save_html(
+                    RunResult(
+                        results=recorded,
+                        trace=events.events,
+                        summary=RunSummary(
+                            run_id=run_id,
+                            discovered=len(paths),
+                            metrics=partial,
+                            completed=sum(r.status == "completed" for r in recorded),
+                            approved=sum(r.decision == "approved" for r in recorded),
+                            rejected=sum(r.decision == "rejected" for r in recorded),
+                            operational_errors=sum(r.status == "error" for r in recorded),
+                            duplicate_skips=sum(
+                                r.payment.status == "already_paid" for r in recorded
+                            ),
+                            new_payments=len(paid),
+                            total_paid_usd=sum(
+                                (r.payment.amount_usd or Decimal(0) for r in paid), Decimal(0)
+                            ),
+                            skipped=skipped,
+                        ),
+                    )
+                )
+            except OSError:
+                pass  # Preserve the original failure when diagnostics/storage are unavailable.
         if trace_file is not None:
             try:
                 trace_file.close()

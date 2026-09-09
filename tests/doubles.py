@@ -65,5 +65,12 @@ class ScenarioLLM:
                 }
             )
         if request.phase == "vp_critique":
-            return LLMResponse(content={"verdict": "accept", "issues": [], "required_changes": []})
+            return LLMResponse(
+                content={
+                    "verdict": "accept",
+                    "reason_summary": "The decision acknowledges the supplied findings and required checks.",
+                    "issues": [],
+                    "required_changes": [],
+                }
+            )
         raise AssertionError(f"Unexpected model phase: {request.phase}")
