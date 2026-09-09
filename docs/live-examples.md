@@ -42,3 +42,10 @@ uv run python scripts/evaluate.py --live
 ```
 
 The full live evaluator passed **23/23 cases** (20 isolated sources and 3 stateful scenarios). The two live tests passed, covering extraction, inventory tool use, VP proposal/critique, rejected stock overrun, and committed clean mock payment. The live run exposed a raw `0%` tax-rate parsing issue and a high-value rejection prompt ambiguity; both were corrected and regression-tested. Run IDs and model wording vary between invocations.
+
+
+## Final table and metrics
+
+The reporting update was verified with a folder containing invoices 1001 and 1002. Its final table showed PAID USD 5,000 and REJECTED USD 15,000 respectively. The report recorded 19,331 tokens, USD 0.028158 estimated spend, approximately 49.6 seconds, 0% processing errors, and USD 15,000 potential blocked-payment exposure (not realized savings). Counts and cost matched the saved trace events.
+
+Local evidence: `runs/330e5163da49462aba073c7519d7988e/trace.jsonl` and `metrics.json`. Detailed traces are stored per run and never printed, including when `--trace` is specified. See [metric definitions](metrics.md).

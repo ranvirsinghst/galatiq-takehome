@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -12,6 +13,7 @@ from .config import Policy
 from .errors import AgentError
 from .graph import process_invoice
 from .ingestion import ingest
+from .metrics import compute_metrics
 from .models import (
     Decision,
     ErrorCode,
@@ -82,6 +84,7 @@ def run(
         source_id = f"source-{position + 1:04d}"
         d.events.source_id = source_id
         d.events.processing_index = None
+        ingestion_start = time.monotonic()
         if fatal:
             outcome = IngestionOutcome(source_id=source_id, error=fatal)
         else:
@@ -118,6 +121,11 @@ def run(
                         message="Unexpected ingestion failure; invoice was not processed.",
                     ),
                 )
+        d.events.record(
+            "ingestion",
+            "agent_stage_finished",
+            elapsed_ms=(time.monotonic() - ingestion_start) * 1000,
+        )
         if outcome.error and outcome.error.fatal:
             fatal = outcome.error
         d.events.record(
@@ -226,6 +234,11 @@ def run(
         final_stock = {}
         summary_error = exc.info
         d.events.record("batch", "final_inventory_unavailable", code=exc.info.code)
+    if d.events.trace_failed and summary_error is None:
+        summary_error = ErrorInfo(
+            code=ErrorCode.STORAGE_ERROR,
+            message="Detailed trace could not be fully persisted; inspect the ledger and outcome artifacts.",
+        )
     results = [
         r.model_copy(update={"trace": [e for e in d.events.events if e.source_id == r.source_id]})
         for r in results
@@ -245,4 +258,12 @@ def run(
         final_inventory=final_stock,
         skipped=skipped or [],
     )
+    metrics = compute_metrics(
+        results,
+        d.events.events,
+        len(paths),
+        (time.monotonic() - d.events.start) * 1000,
+        run_error=bool(summary.error or summary.operational_errors),
+    )
+    summary = summary.model_copy(update={"metrics": metrics})
     return RunResult(results=results, summary=summary, trace=d.events.events)

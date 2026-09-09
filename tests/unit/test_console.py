@@ -176,3 +176,146 @@ def test_public_terminal_cleaner_handles_controls_and_secrets() -> None:
     assert clean_terminal("hello\r\nworld\x1b secret\u202e", ["secret", ""]) == (
         "hello world [REDACTED]"
     )
+
+
+def test_final_table_preserves_order_alignment_and_safe_truncation() -> None:
+    output = StringIO()
+    items = [
+        InvoiceResult(
+            run_id="r",
+            source_id="s1",
+            source_path="/tmp/z.txt",
+            decision=Decision.APPROVED,
+            payment=PaymentOutcome(
+                status=PaymentStatus.PAID, payment_id="p", amount_usd=Decimal("5000")
+            ),
+        ),
+        InvoiceResult(
+            run_id="r",
+            source_id="s2",
+            source_path="/tmp/a.txt",
+            decision=Decision.APPROVED,
+            payment=PaymentOutcome(status=PaymentStatus.ALREADY_PAID, payment_id="p"),
+        ),
+        InvoiceResult(
+            run_id="r",
+            source_id="s3",
+            source_path="long\n" + "x" * 40 + ".txt",
+            decision=Decision.REJECTED,
+            total_usd=Decimal("12.34"),
+            reasons=["private-value\r\n" + "too many | items " * 10],
+        ),
+        InvoiceResult(
+            run_id="r",
+            source_id="s4",
+            source_path="broken.txt",
+            status=ExecutionStatus.ERROR,
+            error=ErrorInfo(code=ErrorCode.PROVIDER_TRANSIENT, message="Provider unavailable"),
+        ),
+    ]
+    ConsoleReporter([], output, secrets=["private-value"]).summary(
+        RunResult(results=items, summary=RunSummary(run_id="r")), output
+    )
+    lines = output.getvalue().splitlines()
+    assert "Filename" in lines[0] and "Primary reason" in lines[0]
+    rows = lines[2:6]
+    assert [line.split(" | ")[1].strip() for line in rows] == [
+        "PAID",
+        "DUPLICATE",
+        "REJECTED",
+        "ERROR",
+    ]
+    assert "$5,000.00" in rows[0] and "$12.34" in rows[2]
+    assert "—" in rows[1] and "—" in rows[3]
+    assert "…" in rows[2] and "private-value" not in output.getvalue()
+    assert all(len(line) <= 108 for line in lines[:6])
+    assert all([i for i, c in enumerate(line) if c == "|"] == [27, 39, 58] for line in rows)
+
+
+def test_summary_metrics_distinguishes_estimates_exposure_and_errors() -> None:
+    from invoice_agent.models import RunMetrics
+
+    output = StringIO()
+    metrics = RunMetrics(
+        run_complete=True,
+        wall_ms=5000,
+        agent_latency_ms={"ingestion": 2500},
+        model_latency_ms={"vp_propose": 1200},
+        model_calls=2,
+        transport_attempts=3,
+        prompt_tokens=1000,
+        completion_tokens=200,
+        total_tokens=1200,
+        cached_prompt_tokens=100,
+        reasoning_tokens=50,
+        estimated_api_cost_usd=Decimal("0.000321"),
+        cost_complete=True,
+        usage_complete=True,
+        operational_error_rate=0.1,
+        rejection_rate=0.4,
+        run_error=False,
+        blocked_payment_exposure_usd=Decimal("5000"),
+        exposure_invoice_count=2,
+        exposure_unvalued_count=1,
+    )
+    ConsoleReporter([], output).summary(
+        RunResult(results=[], summary=RunSummary(run_id="r", metrics=metrics)), output
+    )
+    text = output.getvalue()
+    assert "Estimated token spend: $0.000321 USD (complete)" in text
+    assert "$5,000.00 USD across 2 invoices; not realized savings" in text
+    assert "excludes 1 rejected invoices" in text
+    assert "1,000 input (100 cached); 200 output (50 reasoning); 1,200 total" in text
+    assert "5.0s overall; 2 model calls; 3 transport attempts" in text
+    assert "ingestion 2.5s" in text
+    assert "Model-call time by phase: vp_propose 1.2s" in text
+    assert "Processing error rate: 10.0%; business rejection rate: 40.0%; run error: no" in text
+
+
+def test_partial_unavailable_metrics_do_not_claim_complete_cost() -> None:
+    from invoice_agent.models import RunMetrics
+
+    for cost, expected in ((None, "unavailable"), (Decimal("0.001"), "$0.001000 USD (partial")):
+        output = StringIO()
+        metrics = RunMetrics(
+            run_complete=False,
+            estimated_api_cost_usd=cost,
+            cost_complete=False,
+            usage_complete=False,
+        )
+        ConsoleReporter([], output).summary(
+            RunResult(results=[], summary=RunSummary(run_id="r", metrics=metrics)), output
+        )
+        assert f"Estimated token spend: {expected}" in output.getvalue()
+        assert "Tokens (partial)" in output.getvalue()
+        assert "Metrics cover a partial run" in output.getvalue()
+
+
+def test_table_aligns_wide_and_combining_text_and_uses_candidate_amount() -> None:
+    from invoice_agent.console import terminal_width
+    from invoice_agent.models import InvoiceCandidate
+
+    output = StringIO()
+    item = InvoiceResult(
+        run_id="r",
+        source_id="s",
+        source_path="票据" * 20 + ".txt",
+        decision=Decision.REJECTED,
+        reasons=["e\u0301" * 60],
+        candidate=InvoiceCandidate(source_id="s", total_usd=Decimal("123.45")),
+    )
+    ConsoleReporter([], output).summary(
+        RunResult(results=[item], summary=RunSummary(run_id="r")), output
+    )
+    row = output.getvalue().splitlines()[2]
+    assert [terminal_width(cell) for cell in row.split(" | ")] == [26, 9, 16, 48]
+    assert "$123.45" in row and row.count("…") == 2
+    assert terminal_width(row) == 108
+
+
+def test_trace_write_failure_is_visible_without_trace_option() -> None:
+    output = StringIO()
+    ConsoleReporter([], output).event(
+        TraceEvent(run_id="r", stage="output", event="trace_output_unavailable")
+    )
+    assert "Warning: Detailed trace could not be saved" in output.getvalue()

@@ -21,6 +21,33 @@ def clean_terminal(value: object, secrets: list[str] | None = None) -> str:
     )
 
 
+def terminal_width(value: str) -> int:
+    """Display columns for sanitized text, including wide and combining characters."""
+    return sum(
+        0
+        if unicodedata.category(c).startswith("M")
+        else 2
+        if unicodedata.east_asian_width(c) in ("W", "F")
+        else 1
+        for c in value
+    )
+
+
+def fit_terminal(value: str, width: int, *, right: bool = False) -> str:
+    if terminal_width(value) > width:
+        clipped = ""
+        used = 0
+        for char in value:
+            columns = terminal_width(char)
+            if used + columns > width - 1:
+                break
+            clipped += char
+            used += columns
+        value = clipped + "…"
+    padding = " " * (width - terminal_width(value))
+    return padding + value if right else value + padding
+
+
 class ConsoleReporter:
     def __init__(
         self,
@@ -81,6 +108,8 @@ class ConsoleReporter:
             )
         elif event.event == "transport_exhausted":
             message = "Provider retry limit reached"
+        elif event.event == "trace_output_unavailable":
+            message = "Warning: Detailed trace could not be saved; check run artifacts"
         elif self.trace and event.event == "tool_result":
             stock = payload.get("stock")
             if isinstance(stock, dict):
@@ -129,6 +158,7 @@ class ConsoleReporter:
                     seen.add(cleaned)
 
     def summary(self, result: RunResult, stream: TextIO) -> None:
+        self._table(result.results, stream)
         s = result.summary
         heading = "Run finished with errors" if s.error or s.operational_errors else "Run complete"
         self._line(
@@ -138,6 +168,65 @@ class ConsoleReporter:
             stream,
         )
         self._line(f"Mock payments: {s.new_payments}; total ${s.total_paid_usd:,.2f} USD", stream)
+        if s.metrics is not None:
+            m = s.metrics
+            qualifier = "complete" if m.cost_complete else "partial; some calls unpriced"
+            cost = (
+                f"${m.estimated_api_cost_usd:,.6f} USD ({qualifier})"
+                if m.estimated_api_cost_usd is not None
+                else "unavailable"
+            )
+            self._line(f"Estimated token spend: {cost}", stream)
+            self._line(
+                f"Potential loss avoided (blocked payment exposure): "
+                f"${m.blocked_payment_exposure_usd:,.2f} USD across "
+                f"{m.exposure_invoice_count} invoices; not realized savings",
+                stream,
+            )
+            if m.exposure_unvalued_count:
+                self._line(
+                    f"Exposure excludes {m.exposure_unvalued_count} rejected invoices "
+                    "without a reliable USD amount",
+                    stream,
+                )
+            usage = "complete" if m.usage_complete else "partial"
+            self._line(
+                f"Tokens ({usage}): {m.prompt_tokens:,} input "
+                f"({m.cached_prompt_tokens:,} cached); {m.completion_tokens:,} output "
+                f"({m.reasoning_tokens:,} reasoning); {m.total_tokens:,} total",
+                stream,
+            )
+            self._line(
+                f"Latency: {m.wall_ms / 1000:.1f}s overall; "
+                f"{m.model_calls} model calls; {m.transport_attempts} transport attempts",
+                stream,
+            )
+            if m.agent_latency_ms:
+                self._line(
+                    "Agent latency: "
+                    + "; ".join(
+                        f"{stage} {elapsed / 1000:.1f}s"
+                        for stage, elapsed in sorted(m.agent_latency_ms.items())
+                    ),
+                    stream,
+                )
+            if m.model_latency_ms:
+                self._line(
+                    "Model-call time by phase: "
+                    + "; ".join(
+                        f"{stage} {elapsed / 1000:.1f}s"
+                        for stage, elapsed in sorted(m.model_latency_ms.items())
+                    ),
+                    stream,
+                )
+            self._line(
+                f"Processing error rate: {m.operational_error_rate:.1%}; "
+                f"business rejection rate: {m.rejection_rate:.1%}; "
+                f"run error: {'yes' if m.run_error else 'no'}",
+                stream,
+            )
+            if not m.run_complete:
+                self._line("Metrics cover a partial run", stream)
         if s.final_inventory:
             stock = ", ".join(
                 f"{name}={quantity if quantity is not None else 'unknown'}"
@@ -150,3 +239,44 @@ class ConsoleReporter:
             self._line(f"Run error [{s.error.code}]: {s.error.message}", stream)
         for path in s.skipped:
             self._line(f"Skipped unsupported entry: {path}", stream)
+
+    def _table(self, results: list[InvoiceResult], stream: TextIO) -> None:
+        """Sanitize before padding so source text cannot alter the table layout."""
+        if not results:
+            return
+        widths = (26, 9, 16, 48)
+
+        def row(cells: tuple[str, str, str, str]) -> None:
+            rendered = []
+            for index, (cell, width) in enumerate(zip(cells, widths, strict=True)):
+                clean = self._clean(cell).replace("|", "/")
+                rendered.append(fit_terminal(clean, width, right=index == 2))
+            stream.write(" | ".join(rendered).rstrip() + "\n")
+
+        row(("Filename", "Status", "USD amount", "Primary reason"))
+        stream.write("-+-".join("-" * width for width in widths) + "\n")
+        for item in results:
+            if item.error:
+                status, reason = "ERROR", item.error.message
+            elif item.payment.status == PaymentStatus.PAID:
+                status, reason = "PAID", "Mock payment committed"
+            elif item.payment.status == PaymentStatus.ALREADY_PAID:
+                status, reason = "DUPLICATE", "Already paid in this run"
+            else:
+                status = "REJECTED" if item.decision == "rejected" else "APPROVED"
+                blockers = [f.message for f in item.findings if f.severity == Severity.BLOCKER]
+                reason = next(iter(blockers or item.reasons), "—")
+            amount = item.payment.amount_usd
+            if amount is None:
+                amount = item.total_usd
+            if amount is None and item.candidate is not None:
+                amount = item.candidate.total_usd
+            row(
+                (
+                    Path(item.source_path).name,
+                    status,
+                    f"${amount:,.2f}" if amount is not None else "—",
+                    reason,
+                )
+            )
+        stream.flush()

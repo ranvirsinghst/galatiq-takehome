@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable
 from typing import Any, TextIO
@@ -16,7 +17,10 @@ class EventCollector:
         run_id: str,
         secrets: list[str] | None = None,
         on_event: Callable[[TraceEvent], None] | None = None,
+        trace_stream: TextIO | None = None,
     ):
+        self.trace_failed = False
+        self.trace_stream = trace_stream
         self.on_event = on_event
         self.run_id = run_id
         self.events: list[TraceEvent] = []
@@ -42,6 +46,16 @@ class EventCollector:
             payload["payload"]["processing_index"] = self.processing_index
         normalized = TraceEvent.model_validate(payload)
         self.events.append(normalized)
+        if self.trace_stream is not None:
+            try:
+                self.trace_stream.write(normalized.model_dump_json(exclude_none=True) + "\n")
+                self.trace_stream.flush()
+                os.fsync(self.trace_stream.fileno())
+            except OSError:
+                # In particular, a post-commit event must not erase a paid outcome.
+                self.trace_stream = None
+                self.trace_failed = True
+                self.record("observability", "trace_output_unavailable")
         if self.on_event is not None:
             try:
                 self.on_event(normalized)

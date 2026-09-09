@@ -256,3 +256,117 @@ def test_cli_failure_after_payment_points_to_partial_artifacts(tmp_path, monkeyp
     assert "No complete success summary emitted" in captured.err
     assert "private storage details" not in captured.err
     assert "Run complete:" not in captured.out
+
+
+def test_trace_is_durable_before_progress_callback(tmp_path):
+    trace_path = tmp_path / "trace.jsonl"
+    seen = []
+
+    def progress(event):
+        rows = [json.loads(line) for line in trace_path.read_text().splitlines()]
+        assert rows[-1]["event"] == event.event
+        seen.append(event.event)
+        raise OSError("progress unavailable")
+
+    with trace_path.open("w") as stream:
+        events = EventCollector("r", on_event=progress, trace_stream=stream)
+        events.record("ingestion", "ingest_started", secret="hide", prompt_tokens=42)
+        events.record("batch", "ingestion_barrier")
+    rows = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert seen == ["ingest_started"]
+    assert [r["sequence"] for r in rows] == [1, 2, 3]
+    assert rows[0]["payload"]["secret"] == "[REDACTED]"
+    assert rows[0]["payload"]["prompt_tokens"] == 42
+
+
+def test_trace_failure_after_commit_preserves_paid_outcome(tmp_path):
+    from invoice_agent.config import Policy
+    from invoice_agent.database import SQLitePaymentStore
+    from invoice_agent.runner import RunDependencies, run
+    from tests.doubles import ScenarioLLM
+
+    class FailCommitTrace:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def write(self, value):
+            if '"event":"payment_committed"' in value:
+                raise OSError("disk failure after commit")
+            return self.stream.write(value)
+
+        def flush(self):
+            self.stream.flush()
+
+        def fileno(self):
+            return self.stream.fileno()
+
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    with (tmp_path / "trace.jsonl").open("w") as stream:
+        events = EventCollector("r", trace_stream=FailCommitTrace(stream))
+        store = SQLitePaymentStore(tmp_path / "run.db", "r", events=events)
+        try:
+            result = run([path], RunDependencies(store, ScenarioLLM(), events, Policy()))
+            assert store.find_paid(result.results[0].identity) is not None
+        finally:
+            store.close()
+    assert result.results[0].payment.status == "paid"
+    assert result.summary.new_payments == 1
+    assert result.summary.error.code == "STORAGE_ERROR"
+    assert result.summary.metrics.run_error
+    assert events.trace_failed
+    assert any(e.event == "trace_output_unavailable" for e in events.events)
+
+
+def test_console_summary_failure_does_not_overwrite_completed_metrics(
+    tmp_path, monkeypatch, capsys
+):
+    import main
+    from tests.doubles import ScenarioLLM
+
+    class LocalModel(ScenarioLLM):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def close(self):
+            pass
+
+    def broken_summary(*args):
+        raise BrokenPipeError()
+
+    monkeypatch.setenv("XAI_API_KEY", "test-only-placeholder")
+    monkeypatch.setattr(main, "XAIClient", LocalModel)
+    monkeypatch.setattr(main.ConsoleReporter, "summary", broken_summary)
+    path = invoice(tmp_path / "a.json", "INV-1", "2026-01-01")
+    output = tmp_path / "runs"
+    assert main.main(["--invoice_path", str(path), "--output_dir", str(output)]) == 1
+    directory = next(output.iterdir())
+    metrics = json.loads((directory / "metrics.json").read_text())
+    summary = json.loads((directory / "results.jsonl").read_text().splitlines()[-1])
+    assert metrics["run_complete"] and metrics == summary["metrics"]
+    assert "Processing completed" in capsys.readouterr().err
+
+
+def test_real_client_zero_call_rejection_reports_zero_cost(tmp_path):
+    import httpx
+
+    from invoice_agent.config import Policy
+    from invoice_agent.database import SQLitePaymentStore
+    from invoice_agent.llm import XAIClient
+    from invoice_agent.runner import RunDependencies, run
+
+    def unexpected_request(request):
+        raise AssertionError("Deterministic invalid date should not need a provider call")
+
+    events = EventCollector("r")
+    client = XAIClient("test", events=events, transport=httpx.MockTransport(unexpected_request))
+    path = invoice(tmp_path / "invalid-date.json", "INV-1", "invalid-date")
+    store = SQLitePaymentStore(tmp_path / "inventory.db", "r")
+    try:
+        result = run([path], RunDependencies(store, client, events, Policy()))
+    finally:
+        client.close()
+        store.close()
+    assert result.summary.rejected == 1
+    assert result.summary.metrics.model_calls == 0
+    assert result.summary.metrics.estimated_api_cost_usd == 0
+    assert result.summary.metrics.cost_complete and result.summary.metrics.usage_complete

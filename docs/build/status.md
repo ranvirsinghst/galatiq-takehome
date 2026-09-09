@@ -17,9 +17,9 @@
 
 ## Verification evidence
 
-- Full offline suite: **259 passed**, including the full-CLI subprocess HTTP/SQLite test.
-- Branch-inclusive application coverage: **94%**. Critical modules: database 93%, validation 93%, graph 91%, identity/payment 100%.
-- Ruff checks and formatting pass; mypy passes 21 application/CLI/evaluator files.
+- Full offline suite: **306 passed**, including the full-CLI subprocess HTTP/SQLite test.
+- Previously measured branch-inclusive application coverage, before the reporting additions: **94%**. Critical modules: database 93%, validation 93%, graph 91%, identity/payment 100%.
+- Ruff checks and formatting pass; mypy passes 23 application/CLI/evaluator files.
 - Fixture evaluation: **23/23 cases pass** using reviewed extraction fixtures and scripted model responses, with actual readers, graphs and SQLite.
 - Full supplied folder, verified with both offline doubles and live xAI: **20 completed, 18 rejected, zero operational errors, 2 mock payments, USD 6,890.00**; final stock WidgetA 2, WidgetB 3, GadgetX 5, FakeItem 0.
 - Actual standalone CLI subprocess exercised a local HTTP provider double through XAIClient, then tool calls, VP calls, mock payment and committed ledger. It verifies application integration, not live xAI behavior.
@@ -48,3 +48,10 @@ The initial adversarial and integration reviews resolved lost fatal-error result
 Known product scope: no OCR, real banking, external business services, automatic revision supersession, or cross-run duplicate protection. Source checks cannot prove complete semantic understanding of arbitrary text. Fresh-run payment repetition is deliberate user-directed simulation behavior.
 
 Final live evaluation: **23/23 cases pass** using real xAI, covering 20 isolated sources and 3 stateful scenarios. Reproducible commands and observed evidence are recorded in [Live examples](../live-examples.md).
+
+
+## Run reporting follow-up
+
+Live progress remains concise; detailed events flush to trace.jsonl per run. Final output includes a compact invoice table and metrics.json provides token/cost, full-stage and model-phase latency, operational error rate, and deduplicated blocked-payment exposure. Exposure is potential, not realized savings. Post-commit trace failure and console failure regressions preserve accurate payment/report state.
+
+Final two-file live verification (`runs/330e5163da49462aba073c7519d7988e/`): 1 payment, 1 rejection, 19,331 tokens, USD 0.02815790 provider-reported cost (USD 0.028158 displayed), approximately 49.6 seconds, USD 15,000 blocked exposure. Metrics were reconciled to trace usage events; detailed trace never appeared on stdout/stderr. Offline evaluation remains 23/23. Definitions and pricing provenance: [Run metrics](../metrics.md).
