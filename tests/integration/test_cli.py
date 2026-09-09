@@ -127,7 +127,7 @@ def test_human_cli_streams_before_source_read_and_keeps_json_artifacts(tmp_path,
     original = runner.read_source
 
     def observing_reader(path, source_id):
-        assert f"{path.name}: Extracting" in progress.getvalue()
+        assert f"{path.name}: Reading invoice" in progress.getvalue()
         return original(path, source_id)
 
     class LocalModel(ScenarioLLM):
@@ -135,8 +135,8 @@ def test_human_cli_streams_before_source_read_and_keeps_json_artifacts(tmp_path,
             super().__init__()
 
         def complete(self, request):
-            assert "a.json: Extracting" in progress.getvalue()
-            assert "b.json: Extracting" in progress.getvalue()
+            assert "a.json: Reading invoice" in progress.getvalue()
+            assert "b.json: Reading invoice" in progress.getvalue()
             return super().complete(request)
 
         def close(self):
@@ -145,7 +145,7 @@ def test_human_cli_streams_before_source_read_and_keeps_json_artifacts(tmp_path,
     monkeypatch.setattr(runner, "read_source", observing_reader)
     monkeypatch.setattr(main, "XAIClient", LocalModel)
     assert main.main(["--invoice_path", str(folder), "--output_dir", str(tmp_path / "runs")]) == 0
-    assert "PAID" in out.getvalue()
+    assert "Paid (simulated)" in out.getvalue()
     assert out.getvalue().index("b.json") < out.getvalue().index("a.json")
     assert '"type":' not in out.getvalue()
     artifact = next((tmp_path / "runs").glob("*/results.jsonl"))
@@ -203,7 +203,7 @@ def test_provider_stages_are_flushed_before_http_request():
             self.snapshot = self.getvalue()
 
     progress = Flushed()
-    console = ConsoleReporter([Path("invoice.txt")], progress)
+    console = ConsoleReporter([Path("invoice.txt")], progress, trace=True)
     events = EventCollector("r", on_event=console.event)
     events.source_id = "source-0001"
     expected = ""
@@ -216,9 +216,9 @@ def test_provider_stages_are_flushed_before_http_request():
     try:
         for phase, expected in [
             ("inventory", "Checking inventory"),
-            ("vp_propose", "VP reviewing invoice"),
-            ("vp_critique", "Checking VP decision"),
-            ("vp_revise", "VP revising decision"),
+            ("vp_propose", "Checking payment approval"),
+            ("vp_critique", "Checking the approval decision"),
+            ("vp_revise", "Rechecking approval after an issue was found"),
         ]:
             client.complete(LLMRequest(phase=phase, messages=[]))
     finally:
@@ -252,8 +252,8 @@ def test_cli_failure_after_payment_points_to_partial_artifacts(tmp_path, monkeyp
     artifact = next(output.glob("*/results.jsonl"))
     assert json.loads(artifact.read_text())["payment"]["status"] == "paid"
     assert str(artifact.parent) in captured.err
-    assert "partial results and any committed payments" in captured.err
-    assert "No complete success summary emitted" in captured.err
+    assert "Completed results and simulated payments are saved" in captured.err
+    assert "Run stopped early" in captured.err
     assert "private storage details" not in captured.err
     assert "Run complete:" not in captured.out
 

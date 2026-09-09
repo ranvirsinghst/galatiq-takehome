@@ -56,22 +56,25 @@ Retries are bounded separately: three extraction attempts, three VP cycles, two 
 
 ## Results and observability
 
-The default CLI prints live, filename-prefixed progress to stderr and readable decisions and a summary to stdout. Progress is flushed before reading a source or waiting for Grok, so extraction is visible immediately. All invoices are still ingested before processing in invoice-date order.
+The default CLI prints brief, filename-prefixed progress to stderr and decisions and a short summary to stdout. Messages are flushed immediately. Invoices are read first, then reviewed oldest first so stock goes to earlier orders. Routine internal review steps are kept in the activity log.
 
 ```text
-invoice_1001.txt: Extracting (1/20)
-invoice_1001.txt: Extracted
+invoice_1001.txt: Reading invoice (1/20)
 ...
-invoice_1001.txt: Checking inventory
-invoice_1001.txt: VP reviewing invoice
-invoice_1001.txt: PAID (mock) — $5,000.00 USD
+Reviewing oldest invoices first so stock goes to earlier orders.
+invoice_1001.txt: Reviewing invoice dated 2026-01-01
+invoice_1001.txt: Paid (simulated) — $5,000.00 USD
+invoice_1002.txt: Rejected; no payment made
+invoice_1002.txt: Reason: WidgetB requires 20, available 5
 ```
+
+Rejected invoices show up to two distinct reasons, with concrete validation problems first. Outcomes also show up to one warning. Long explanations are shortened, and additional details are available in the saved report. Successful payments do not repeat approval explanations.
 
 Use `--json` for JSONL stdout (one invoice result plus a final summary); progress remains on stderr, so `--json > results.jsonl` is safe for scripts. Business rejection exits 0; operational failure exits 1; invalid input/configuration exits 2.
 
 Detailed events are saved continuously to `runs/<run_id>/trace.jsonl`, including model timing, token usage, inventory tools, corrections, and VP critique. They are never printed to the terminal, even with `--trace --json`. `--trace` additionally embeds events in `results.jsonl`; ordinary progress and rejection reasons remain visible without it. Credentials and hidden model reasoning are not logged.
 
-Every completed run ends with a compact invoice table and metrics: estimated API spend, potential loss avoided (blocked payment exposure, **not realized savings**), token counts, overall/per-agent latency, and processing error rate. `metrics.json` stores the same numbers; `--json` includes them in its final summary. Interrupted runs retain the trace and save explicitly partial metrics when storage is writable. See [metric definitions and pricing](docs/metrics.md).
+Every completed run ends with outcome counts, the simulated payment total, and elapsed time. The full invoice table and technical metrics are available in `report.html` and `metrics.json`; `--json` includes metrics in its final summary. These include estimated API spend, blocked payment exposure (**not realized savings**), token counts, latency, and error rates. Interrupted runs retain the trace and save explicitly partial metrics when storage is writable. See [metric definitions and pricing](docs/metrics.md).
 
 Each invocation writes `runs/<run_id>/inventory.db`, `results.jsonl`, `audit.jsonl`, `trace.jsonl`, and `metrics.json`; use `--output_dir` to select a different root. Completed outcomes are flushed incrementally, so interruption preserves earlier results. The audit file retains source hashes, exact normalized candidates, source amounts/evidence, validation reports, and bound VP decisions. The run directory is printed before processing so a partial run can be reconciled against its ledger. These are ignored local artifacts, not shared state for future runs. A failed final inventory read is reported as unavailable, not fabricated as the seed balance.
 

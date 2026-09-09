@@ -29,15 +29,14 @@ class FlushStream(StringIO):
 def test_progress_flushes_immediately_without_repeating_extraction() -> None:
     output = FlushStream()
     reporter = ConsoleReporter([Path("invoice_1001.txt")], output)
-    for name in ("ingest_started", "model_request", "ingest_terminal"):
+    for name in ("ingest_started", "model_request", "ingest_terminal", "ingestion_barrier"):
         reporter.event(
             TraceEvent(run_id="r", source_id="source-0001", stage="ingestion", event=name)
         )
     assert output.getvalue().splitlines() == [
-        "invoice_1001.txt: Extracting",
-        "invoice_1001.txt: Extracted; waiting for date-ordered processing",
+        "invoice_1001.txt: Reading invoice",
     ]
-    assert output.flushes == 2
+    assert output.flushes == 1
 
 
 def test_trace_shows_timing_without_raw_model_payload() -> None:
@@ -79,10 +78,10 @@ def test_rejection_deduplicates_reasons_and_includes_warnings_safely() -> None:
     text = output.getvalue()
     assert len(text.splitlines()) == 3
     assert text.count("Over stock") == 1
-    assert "Warning [TERMS]" in text
+    assert "Note:" in text
     assert "private-value" not in text
     assert "\r" not in text and "\x1b" not in text
-    assert "bad name.txt: REJECTED; payment blocked" in text
+    assert "bad name.txt: Rejected; no payment made" in text
 
 
 def test_paid_duplicate_and_operational_failure_are_distinct() -> None:
@@ -110,14 +109,14 @@ def test_paid_duplicate_and_operational_failure_are_distinct() -> None:
         output,
     )
     text = output.getvalue()
-    assert "PAID (mock) — $5,000.00 USD" in text
-    assert "ALREADY PAID in this run; duplicate skipped" in text
-    assert "ERROR [PROVIDER_TRANSIENT]: Provider unavailable" in text
+    assert "Paid (simulated) — $5,000.00 USD" in text
+    assert "Duplicate skipped; already paid in this run" in text
+    assert "Could not complete: The invoice review service is unavailable. Try again later." in text
 
 
 def test_summary_reports_summary_only_error_stock_and_skips() -> None:
     output = StringIO()
-    reporter = ConsoleReporter([], output)
+    reporter = ConsoleReporter([], output, trace=True)
     reporter.summary(
         RunResult(
             results=[],
@@ -140,7 +139,7 @@ def test_summary_reports_summary_only_error_stock_and_skips() -> None:
 
 def test_summary_only_failure_does_not_claim_success_or_zero_run_errors() -> None:
     output = StringIO()
-    ConsoleReporter([], output).summary(
+    ConsoleReporter([], output, trace=True).summary(
         RunResult(
             results=[],
             summary=RunSummary(
@@ -169,7 +168,7 @@ def test_retry_reports_failed_and_next_attempt() -> None:
             payload={"attempt": 1},
         )
     )
-    assert output.getvalue() == ("invoice.txt: Provider attempt 1 failed; retrying attempt 2\n")
+    assert output.getvalue() == ("invoice.txt: Service unavailable; trying again (attempt 2)\n")
 
 
 def test_public_terminal_cleaner_handles_controls_and_secrets() -> None:
@@ -213,7 +212,7 @@ def test_final_table_preserves_order_alignment_and_safe_truncation() -> None:
             error=ErrorInfo(code=ErrorCode.PROVIDER_TRANSIENT, message="Provider unavailable"),
         ),
     ]
-    ConsoleReporter([], output, secrets=["private-value"]).summary(
+    ConsoleReporter([], output, trace=True, secrets=["private-value"]).summary(
         RunResult(results=items, summary=RunSummary(run_id="r")), output
     )
     lines = output.getvalue().splitlines()
@@ -258,7 +257,7 @@ def test_summary_metrics_distinguishes_estimates_exposure_and_errors() -> None:
         exposure_invoice_count=2,
         exposure_unvalued_count=1,
     )
-    ConsoleReporter([], output).summary(
+    ConsoleReporter([], output, trace=True).summary(
         RunResult(results=[], summary=RunSummary(run_id="r", metrics=metrics)), output
     )
     text = output.getvalue()
@@ -283,7 +282,7 @@ def test_partial_unavailable_metrics_do_not_claim_complete_cost() -> None:
             cost_complete=False,
             usage_complete=False,
         )
-        ConsoleReporter([], output).summary(
+        ConsoleReporter([], output, trace=True).summary(
             RunResult(results=[], summary=RunSummary(run_id="r", metrics=metrics)), output
         )
         assert f"Estimated token spend: {expected}" in output.getvalue()
@@ -304,7 +303,7 @@ def test_table_aligns_wide_and_combining_text_and_uses_candidate_amount() -> Non
         reasons=["e\u0301" * 60],
         candidate=InvoiceCandidate(source_id="s", total_usd=Decimal("123.45")),
     )
-    ConsoleReporter([], output).summary(
+    ConsoleReporter([], output, trace=True).summary(
         RunResult(results=[item], summary=RunSummary(run_id="r")), output
     )
     row = output.getvalue().splitlines()[2]
@@ -318,4 +317,121 @@ def test_trace_write_failure_is_visible_without_trace_option() -> None:
     ConsoleReporter([], output).event(
         TraceEvent(run_id="r", stage="output", event="trace_output_unavailable")
     )
-    assert "Warning: Detailed trace could not be saved" in output.getvalue()
+    assert "Warning: Activity log could not be saved" in output.getvalue()
+
+
+def test_default_output_bounds_details_and_omits_internal_steps() -> None:
+    output = StringIO()
+    reporter = ConsoleReporter([Path("invoice.txt")], output)
+    for phase in ("inventory", "vp_propose", "vp_critique"):
+        reporter.event(
+            TraceEvent(run_id="r", source_id="source-0001", stage=phase, event="model_request")
+        )
+    assert output.getvalue() == ""
+    item = InvoiceResult(
+        run_id="r",
+        source_id="source-0001",
+        source_path="invoice.txt",
+        decision=Decision.REJECTED,
+        reasons=["Long explanation " * 100, "Another explanation", "More explanation"],
+        findings=[
+            ValidationFinding(
+                code="STOCK", severity=Severity.BLOCKER, message="WidgetB requires 20, available 5"
+            )
+        ],
+    )
+    reporter.invoice(item, output)
+    lines = output.getvalue().splitlines()
+    assert len(lines) == 4
+    assert "WidgetB requires 20, available 5" in lines[1]
+    assert lines[2].endswith("…")
+    assert lines[3] == "invoice.txt: More details in the saved report."
+    assert len(lines[2]) < 210
+    assert len(item.reasons) == 3  # Presentation does not discard saved evidence.
+
+
+def test_default_summary_is_short_and_preserves_failure_and_skipped_notice() -> None:
+    from invoice_agent.models import RunMetrics
+
+    output = StringIO()
+    ConsoleReporter([], output).summary(
+        RunResult(
+            results=[],
+            summary=RunSummary(
+                run_id="r",
+                metrics=RunMetrics(wall_ms=1500, run_complete=False),
+                error=ErrorInfo(
+                    code=ErrorCode.STORAGE_ERROR, message="Unable to save activity log"
+                ),
+                skipped=["a.md", "b.md"],
+            ),
+        ),
+        output,
+    )
+    text = output.getvalue()
+    assert len(text.splitlines()) == 6
+    assert text.startswith("Run finished with errors:")
+    assert "Time taken: 1.5s" in text
+    assert "results are incomplete" in text
+    assert "Unable to save activity log" in text
+    assert "Skipped 2 unsupported entries" in text
+    assert "Tokens" not in text and "Filename" not in text
+
+
+def test_paid_output_does_not_repeat_approval_rationale() -> None:
+    output = StringIO()
+    ConsoleReporter([], output).invoice(
+        InvoiceResult(
+            run_id="r",
+            source_id="s",
+            source_path="invoice.txt",
+            decision=Decision.APPROVED,
+            reasons=["All validation checks passed. " * 100],
+            payment=PaymentOutcome(
+                status=PaymentStatus.PAID, payment_id="p", amount_usd=Decimal("12.50")
+            ),
+        ),
+        output,
+    )
+    assert output.getvalue().splitlines() == ["invoice.txt: Paid (simulated) — $12.50 USD"]
+
+
+def test_error_keeps_distinct_skip_reason_and_points_to_full_details() -> None:
+    output = StringIO()
+    ConsoleReporter([], output).invoice(
+        InvoiceResult(
+            run_id="r",
+            source_id="s",
+            source_path="invoice.txt",
+            status=ExecutionStatus.ERROR,
+            error=ErrorInfo(code=ErrorCode.STORAGE_ERROR, message="Storage issue " * 100),
+            reasons=["Not processed because shared infrastructure failed."],
+        ),
+        output,
+    )
+    text = output.getvalue()
+    assert "Not processed because shared infrastructure failed." in text
+    assert "More details in the saved report." in text
+
+
+def test_reasons_with_same_shortened_text_are_not_repeated() -> None:
+    output = StringIO()
+    shared = "Unclear invoice details " * 20
+    ConsoleReporter([], output).invoice(
+        InvoiceResult(
+            run_id="r",
+            source_id="s",
+            source_path="invoice.txt",
+            decision=Decision.REJECTED,
+            reasons=[shared + "one", shared + "two"],
+            findings=[
+                ValidationFinding(code=str(i), severity=Severity.WARNING, message=f"Warning {i}")
+                for i in range(3)
+            ],
+        ),
+        output,
+    )
+    text = output.getvalue()
+    assert text.count("Reason:") == 1
+    assert text.count("Note:") == 1
+    assert "More details in the saved report." in text

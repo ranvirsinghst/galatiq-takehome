@@ -74,44 +74,42 @@ class ConsoleReporter:
         name = self.names.get(event.source_id or "", event.source_id or "Run")
         message: str | None = None
         if event.event == "ingest_started":
-            message = "Extracting"
+            message = "Reading invoice"
             if payload.get("position") is not None and payload.get("total") is not None:
                 message += f" ({payload['position']}/{payload['total']})"
-        elif event.event == "ingest_terminal":
-            if payload.get("error"):
-                message = f"Extraction failed ({payload['error']})"
-            elif payload.get("rejected"):
-                message = "Extraction rejected"
-            else:
-                message = "Extracted; waiting for date-ordered processing"
         elif event.event == "ingestion_barrier":
-            self._line("Run: Ingestion complete; processing invoices oldest first")
+            if len(self.names) > 1:
+                self._line("Reviewing oldest invoices first so stock goes to earlier orders.")
             return
         elif event.event == "processing_started":
             date = payload.get("invoice_date", payload.get("date"))
-            message = f"Processing (invoice date {date})" if date else "Processing"
+            message = f"Reviewing invoice dated {date}" if date else "Reviewing invoice"
         elif event.event == "model_request":
-            message = {
-                "inventory": "Checking inventory",
-                "vp_propose": "VP reviewing invoice",
-                "vp_critique": "Checking VP decision",
-                "vp_revise": "VP revising decision",
-            }.get(event.stage)
+            message = (
+                {
+                    "inventory": "Checking inventory",
+                    "vp_propose": "Checking payment approval",
+                    "vp_critique": "Checking the approval decision",
+                    "vp_revise": "Rechecking approval after an issue was found",
+                }.get(event.stage)
+                if self.trace or event.stage == "vp_revise"
+                else None
+            )
         elif event.event == "review_rejected_by_rules":
-            message = "Rejected by deterministic rules; VP review skipped"
+            message = "Invoice checks failed; payment will be blocked" if self.trace else None
         elif event.event == "extraction_repair_required":
-            message = "Extraction needs correction; checking source evidence"
+            message = "Some invoice details are unclear; checking the original"
         elif event.event == "transport_retry":
             attempt = payload.get("attempt")
             message = (
-                f"Provider attempt {attempt} failed; retrying attempt {attempt + 1}"
+                f"Service unavailable; trying again (attempt {attempt + 1})"
                 if isinstance(attempt, int) and not isinstance(attempt, bool)
-                else "Provider request failed; retrying"
+                else "Service unavailable; trying again"
             )
         elif event.event == "transport_exhausted":
-            message = "Provider retry limit reached"
+            message = "Service is still unavailable; this invoice could not be completed"
         elif event.event == "trace_output_unavailable":
-            message = "Warning: Detailed trace could not be saved; check run artifacts"
+            message = "Warning: Activity log could not be saved; check the saved results"
         elif self.trace and event.event == "tool_result":
             stock = payload.get("stock")
             if isinstance(stock, dict):
@@ -132,35 +130,53 @@ class ConsoleReporter:
 
     def invoice(self, item: InvoiceResult, stream: TextIO) -> None:
         name = Path(item.source_path).name
+        error_message = item.error.message if item.error else ""
         if item.error:
-            status = f"ERROR [{item.error.code}]: {item.error.message}"
+            error_message = {
+                "PROVIDER_TRANSIENT": "The invoice review service is unavailable. Try again later.",
+                "LLM_SCHEMA_ERROR": "The review service returned an unreadable response.",
+                "TOOL_PROTOCOL_ERROR": "The review service could not complete an invoice check.",
+            }.get(item.error.code, item.error.message)
+            status = f"Could not complete: {self._brief(error_message)}"
         elif item.payment.status == PaymentStatus.PAID:
             amount = item.payment.amount_usd
-            status = "PAID (mock)" + (f" — ${amount:,.2f} USD" if amount is not None else "")
+            status = "Paid (simulated)" + (f" — ${amount:,.2f} USD" if amount is not None else "")
         elif item.payment.status == PaymentStatus.ALREADY_PAID:
-            status = "ALREADY PAID in this run; duplicate skipped"
+            status = "Duplicate skipped; already paid in this run"
         elif item.decision == "rejected":
-            status = "REJECTED; payment blocked"
+            status = "Rejected; no payment made"
         else:
-            status = "APPROVED; no payment committed"
+            status = "Approved; no payment made"
         self._line(f"{name}: {status}", stream)
-        details = list(item.reasons)
-        details.extend(f.message for f in item.findings if f.severity == Severity.BLOCKER)
-        seen: set[str] = set()
-        for reason in details:
-            cleaned = self._clean(reason)
-            if cleaned and cleaned not in seen:
-                self._line(f"{name}: Reason: {cleaned}", stream)
-                seen.add(cleaned)
-        for finding in item.findings:
-            if finding.severity == Severity.WARNING:
-                cleaned = self._clean(finding.message)
-                if cleaned not in seen:
-                    self._line(f"{name}: Warning [{finding.code}]: {cleaned}", stream)
+        # Prefer concrete validation failures over the model's longer explanation.
+        details = [f.message for f in item.findings if f.severity == Severity.BLOCKER]
+        if item.decision == "rejected" or item.error:
+            details.extend(item.reasons)
+        warnings = [f.message for f in item.findings if f.severity == Severity.WARNING]
+        seen = {self._clean(item.error.message)} if item.error else set()
+        omitted = item.error is not None and (
+            error_message != item.error.message or terminal_width(self._clean(error_message)) > 180
+        )
+        for label, messages, limit in (("Reason", details, 2), ("Note", warnings, 1)):
+            unique = []
+            for reason in messages:
+                cleaned = self._clean(reason)
+                if cleaned and cleaned not in seen:
+                    unique.append(cleaned)
                     seen.add(cleaned)
+            displayed = list(dict.fromkeys(self._brief(reason) for reason in unique))
+            for reason in displayed[:limit]:
+                self._line(f"{name}: {label}: {reason}", stream)
+            omitted |= len(displayed) > limit or any(terminal_width(r) > 180 for r in unique)
+        if omitted:
+            self._line(f"{name}: More details in the saved report.", stream)
+
+    def _brief(self, value: object) -> str:
+        return fit_terminal(self._clean(value), 180).rstrip()
 
     def summary(self, result: RunResult, stream: TextIO) -> None:
-        self._table(result.results, stream)
+        if self.trace:
+            self._table(result.results, stream)
         s = result.summary
         heading = "Run finished with errors" if s.error or s.operational_errors else "Run complete"
         self._line(
@@ -169,7 +185,22 @@ class ConsoleReporter:
             f"{s.operational_errors} invoice errors",
             stream,
         )
-        self._line(f"Mock payments: {s.new_payments}; total ${s.total_paid_usd:,.2f} USD", stream)
+        self._line(
+            f"Simulated payments: {s.new_payments}; total ${s.total_paid_usd:,.2f} USD", stream
+        )
+        if not self.trace:
+            if s.metrics is not None:
+                self._line(f"Time taken: {s.metrics.wall_ms / 1000:.1f}s", stream)
+                if not s.metrics.run_complete:
+                    self._line("Run stopped early; results are incomplete.", stream)
+            if s.error:
+                self._line(f"Run issue: {self._brief(s.error.message)}", stream)
+            if s.skipped:
+                self._line(
+                    f"Skipped {len(s.skipped)} unsupported entries; see the saved report for filenames. Supported formats: PDF, TXT, CSV, JSON, XML.",
+                    stream,
+                )
+            return
         if s.metrics is not None:
             m = s.metrics
             qualifier = "complete" if m.cost_complete else "partial; some calls unpriced"
